@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/app_config.dart';
+import '../../core/push/push_service.dart';
 import '../../core/theme/app_theme.dart';
 import '../../core/utils/contact.dart';
 import '../../providers/auth_provider.dart';
@@ -42,6 +43,11 @@ class _LoginScreenState extends State<LoginScreen> {
         username: _usernameController.text.trim(),
         password: _passwordController.text,
       );
+
+      // Tell the backend which phone this person just signed in on.
+      // Failures are swallowed inside the service - a missing push is
+      // never a reason to block a login.
+      await PushService.registerDevice();
 
       if (!mounted) return;
 

@@ -12,6 +12,7 @@ import '../../providers/notification_provider.dart';
 import '../../widgets/notification_bell.dart';
 import '../../screens/profile/profile_screen.dart';
 import 'project_form_screen.dart';
+import 'team_form_screen.dart';
 import 'user_form_screen.dart';
 import 'tabs/admin_dashboard_tab.dart';
 import 'tabs/admin_projects_tab.dart';
@@ -90,6 +91,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
     }
   }
 
+  Future<void> _openCreateTeam() async {
+    await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => const TeamFormScreen(),
+      ),
+    );
+  }
+
   Widget? _buildFab() {
     if (_index == 1) {
       return FloatingActionButton.extended(
@@ -112,6 +121,14 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
         onPressed: _openCreateUser,
         icon: const Icon(Icons.person_add_alt),
         label: const Text('New user'),
+      );
+    }
+
+    if (_index == 4) {
+      return FloatingActionButton.extended(
+        onPressed: _openCreateTeam,
+        icon: const Icon(Icons.group_add_outlined),
+        label: const Text('New team'),
       );
     }
 

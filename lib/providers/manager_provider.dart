@@ -140,7 +140,7 @@ class ManagerProvider extends ChangeNotifier {
   // ------------------------------------------------------------- summaries
 
   int activeCount(List<ProjectModel> mine) => mine
-      .where((ProjectModel p) => p.status == ProjectStatus.inProgress)
+      .where((ProjectModel p) => p.status == ProjectStatus.active)
       .length;
 
   int completedCount(List<ProjectModel> mine) => mine

@@ -6,6 +6,7 @@ import '../../../providers/team_provider.dart';
 import '../../../providers/user_provider.dart';
 import '../../../widgets/admin/admin_widgets.dart';
 import '../../../widgets/admin/async_view.dart';
+import '../team_form_screen.dart';
 
 class AdminTeamsTab extends StatefulWidget {
   const AdminTeamsTab({super.key});
@@ -108,6 +109,94 @@ class _TeamCard extends StatelessWidget {
 
   final TeamModel team;
 
+  void _snack(BuildContext context, String message, {bool isError = false}) {
+    ScaffoldMessenger.of(context)
+      ..hideCurrentSnackBar()
+      ..showSnackBar(
+        SnackBar(
+          content: Text(message),
+          backgroundColor:
+              isError ? Theme.of(context).colorScheme.error : null,
+        ),
+      );
+  }
+
+  Future<void> _edit(BuildContext context) async {
+    final bool? saved = await Navigator.of(context).push<bool>(
+      MaterialPageRoute<bool>(
+        builder: (_) => TeamFormScreen(team: team),
+      ),
+    );
+
+    if (saved == true && context.mounted) {
+      _snack(context, 'Team updated');
+    }
+  }
+
+  Future<void> _toggleActive(BuildContext context) async {
+    final TeamProvider teams = context.read<TeamProvider>();
+    final bool ok = await teams.setActive(team.id, !team.isActive);
+
+    if (!context.mounted) {
+      return;
+    }
+
+    _snack(
+      context,
+      ok
+          ? (team.isActive ? 'Team deactivated' : 'Team activated')
+          : (teams.error ?? 'Could not update the team'),
+      isError: !ok,
+    );
+  }
+
+  Future<void> _confirmDelete(BuildContext context) async {
+    final TeamProvider teams = context.read<TeamProvider>();
+
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (BuildContext dialogContext) {
+        return AlertDialog(
+          title: const Text('Delete this team?'),
+          content: Text(
+            '"${team.name}" and its membership list will be removed. '
+            'Projects owned by it are kept, but they end up with no team '
+            'until you set another one. Deactivating is usually enough.',
+          ),
+          actions: <Widget>[
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: const Text('Cancel'),
+            ),
+            FilledButton(
+              style: FilledButton.styleFrom(
+                backgroundColor: Theme.of(context).colorScheme.error,
+              ),
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              child: const Text('Delete'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirmed != true || !context.mounted) {
+      return;
+    }
+
+    final bool ok = await teams.deleteTeam(team.id);
+
+    if (!context.mounted) {
+      return;
+    }
+
+    _snack(
+      context,
+      ok ? 'Team deleted' : (teams.error ?? 'Could not delete the team'),
+      isError: !ok,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
@@ -126,11 +215,74 @@ class _TeamCard extends StatelessWidget {
             size: 20,
           ),
         ),
-        title: Text(
-          team.name,
-          style: theme.textTheme.titleSmall?.copyWith(
-            fontWeight: FontWeight.w600,
-          ),
+        title: Row(
+          children: <Widget>[
+            Expanded(
+              child: Text(
+                team.name,
+                style: theme.textTheme.titleSmall?.copyWith(
+                  fontWeight: FontWeight.w600,
+                ),
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+            PopupMenuButton<String>(
+              tooltip: 'Team actions',
+              onSelected: (String action) {
+                switch (action) {
+                  case 'edit':
+                    _edit(context);
+                    break;
+                  case 'active':
+                    _toggleActive(context);
+                    break;
+                  case 'delete':
+                    _confirmDelete(context);
+                    break;
+                }
+              },
+              itemBuilder: (_) => <PopupMenuEntry<String>>[
+                const PopupMenuItem<String>(
+                  value: 'edit',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(Icons.edit_outlined),
+                    title: Text('Edit and members'),
+                  ),
+                ),
+                PopupMenuItem<String>(
+                  value: 'active',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      team.isActive
+                          ? Icons.toggle_off_outlined
+                          : Icons.toggle_on_outlined,
+                    ),
+                    title: Text(team.isActive ? 'Deactivate' : 'Activate'),
+                  ),
+                ),
+                const PopupMenuDivider(),
+                PopupMenuItem<String>(
+                  value: 'delete',
+                  child: ListTile(
+                    dense: true,
+                    contentPadding: EdgeInsets.zero,
+                    leading: Icon(
+                      Icons.delete_outline,
+                      color: theme.colorScheme.error,
+                    ),
+                    title: Text(
+                      'Delete',
+                      style: TextStyle(color: theme.colorScheme.error),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ],
         ),
         subtitle: Padding(
           padding: const EdgeInsets.only(top: 6),

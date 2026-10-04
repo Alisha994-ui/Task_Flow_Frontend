@@ -3,6 +3,11 @@ import '../core/network/api_client.dart';
 class AttachmentModel {
   final int id;
   final int task;
+
+  /// Set when the file was posted with a comment rather than attached
+  /// to the task on its own.
+  final int? comment;
+
   final int? uploadedBy;
   final String uploadedByName;
 
@@ -13,6 +18,7 @@ class AttachmentModel {
   AttachmentModel({
     required this.id,
     required this.task,
+    this.comment,
     this.uploadedBy,
     required this.uploadedByName,
     required this.file,
@@ -23,6 +29,7 @@ class AttachmentModel {
     return AttachmentModel(
       id: json['id'] ?? 0,
       task: json['task'] ?? 0,
+      comment: json['comment'],
       uploadedBy: json['uploaded_by'],
       uploadedByName: json['uploaded_by_name'] ?? '',
       file: json['file']?.toString() ?? '',

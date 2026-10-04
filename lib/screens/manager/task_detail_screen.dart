@@ -213,7 +213,9 @@ class _TaskDetailView extends StatelessWidget {
                       onAssignTap:
                           canManage ? () => _reassign(context, task) : null,
                     ),
-                    const _CommentsTab(),
+                    _CommentsTab(
+                      locked: !canManage && (task.isCompleted),
+                    ),
                     const _ActivityTab(),
                   ],
                 ),
@@ -554,7 +556,11 @@ class _SubtaskSectionState extends State<_SubtaskSection> {
 }
 
 class _CommentsTab extends StatefulWidget {
-  const _CommentsTab();
+  const _CommentsTab({required this.locked});
+
+  /// A completed task an employee owns: they may still write, but not
+  /// attach - files follow the same rule as everywhere else.
+  final bool locked;
 
   @override
   State<_CommentsTab> createState() => _CommentsTabState();
@@ -563,21 +569,38 @@ class _CommentsTab extends StatefulWidget {
 class _CommentsTabState extends State<_CommentsTab> {
   final TextEditingController _controller = TextEditingController();
 
+  PlatformFile? _pending;
+
   @override
   void dispose() {
     _controller.dispose();
     super.dispose();
   }
 
-  Future<void> _send() async {
-    final String text = _controller.text.trim();
+  Future<void> _pickFile() async {
+    final List<PlatformFile> picked = await FilePicker.pickFiles();
 
-    if (text.isEmpty) {
+    if (picked.isEmpty || picked.first.path == null) {
       return;
     }
 
+    setState(() => _pending = picked.first);
+  }
+
+  Future<void> _send() async {
+    final String typed = _controller.text.trim();
+    final PlatformFile? file = _pending;
+
+    if (typed.isEmpty && file == null) {
+      return;
+    }
+
+    // Comment.text is required on the backend, so a file sent on its own
+    // gets the file name as its text rather than failing validation.
+    final String text = typed.isEmpty ? 'Shared ${file!.name}' : typed;
+
     final TaskDetailProvider detail = context.read<TaskDetailProvider>();
-    final bool ok = await detail.addComment(text);
+    final bool ok = await detail.addComment(text, filePath: file?.path);
 
     if (!mounted) {
       return;
@@ -585,7 +608,16 @@ class _CommentsTabState extends State<_CommentsTab> {
 
     if (ok) {
       _controller.clear();
+      setState(() => _pending = null);
       FocusScope.of(context).unfocus();
+
+      // addComment reports a failed upload through error while still
+      // returning true - the comment did post.
+      if (detail.error != null) {
+        ScaffoldMessenger.of(context)
+          ..hideCurrentSnackBar()
+          ..showSnackBar(SnackBar(content: Text(detail.error!)));
+      }
     } else {
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
@@ -606,6 +638,14 @@ class _CommentsTabState extends State<_CommentsTab> {
 
     return Column(
       children: <Widget>[
+        _ScopeHint(
+          icon: Icons.chat_bubble_outline,
+          text: widget.locked
+              ? 'Questions about this task. It is complete, so files are '
+                  'closed - you can still write.'
+              : 'Questions and updates about this task. For the project '
+                  'as a whole, use its Discussion tab.',
+        ),
         Expanded(
           child: comments.isEmpty
               ? Center(
@@ -663,6 +703,12 @@ class _CommentsTabState extends State<_CommentsTab> {
                               const SizedBox(height: 2),
                               Text(comment.text,
                                   style: theme.textTheme.bodyMedium),
+                              ...detail.attachmentsFor(comment.id).map(
+                                    (AttachmentModel file) => Padding(
+                                      padding: const EdgeInsets.only(top: 8),
+                                      child: _CommentFileChip(file: file),
+                                    ),
+                                  ),
                             ],
                           ),
                         ),
@@ -675,31 +721,82 @@ class _CommentsTabState extends State<_CommentsTab> {
           top: false,
           child: Padding(
             padding: const EdgeInsets.fromLTRB(12, 4, 12, 12),
-            child: Row(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: <Widget>[
-                Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    minLines: 1,
-                    maxLines: 4,
-                    textCapitalization: TextCapitalization.sentences,
-                    decoration: InputDecoration(
-                      hintText: 'Write a comment',
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                      ),
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 12,
-                      ),
+                if (_pending != null)
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 8),
+                    child: Row(
+                      children: <Widget>[
+                        Icon(
+                          Icons.attach_file,
+                          size: 16,
+                          color: theme.colorScheme.primary,
+                        ),
+                        const SizedBox(width: 6),
+                        Expanded(
+                          child: Text(
+                            _pending!.name,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: theme.textTheme.bodySmall?.copyWith(
+                              color: theme.colorScheme.primary,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          tooltip: 'Remove file',
+                          visualDensity: VisualDensity.compact,
+                          icon: const Icon(Icons.close, size: 16),
+                          onPressed: () => setState(() => _pending = null),
+                        ),
+                      ],
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                IconButton.filled(
-                  onPressed: detail.isBusy ? null : _send,
-                  icon: const Icon(Icons.send, size: 18),
+                Row(
+                  children: <Widget>[
+                    if (!widget.locked)
+                      IconButton(
+                        tooltip: 'Attach a file',
+                        onPressed: detail.isBusy ? null : _pickFile,
+                        icon: const Icon(Icons.attach_file),
+                      ),
+                    Expanded(
+                      child: TextField(
+                        controller: _controller,
+                        minLines: 1,
+                        maxLines: 4,
+                        textCapitalization: TextCapitalization.sentences,
+                        decoration: InputDecoration(
+                          hintText: 'Write a comment',
+                          isDense: true,
+                          border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(24),
+                          ),
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16,
+                            vertical: 12,
+                          ),
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    IconButton.filled(
+                      onPressed: detail.isBusy ? null : _send,
+                      icon: detail.isBusy
+                          ? const SizedBox(
+                              height: 16,
+                              width: 16,
+                              child: CircularProgressIndicator(
+                                strokeWidth: 2,
+                                color: Colors.white,
+                              ),
+                            )
+                          : const Icon(Icons.send, size: 18),
+                    ),
+                  ],
                 ),
               ],
             ),
@@ -1156,6 +1253,102 @@ class _LockedNote extends StatelessWidget {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// A file posted with a comment. Tapping it opens the file.
+class _CommentFileChip extends StatelessWidget {
+  const _CommentFileChip({required this.file});
+
+  final AttachmentModel file;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return InkWell(
+      borderRadius: BorderRadius.circular(10),
+      onTap: () async {
+        final bool opened = await launchUrl(
+          Uri.parse(file.url),
+          mode: LaunchMode.externalApplication,
+        );
+
+        if (!opened && context.mounted) {
+          ScaffoldMessenger.of(context)
+            ..hideCurrentSnackBar()
+            ..showSnackBar(
+              const SnackBar(content: Text('Could not open this file')),
+            );
+        }
+      },
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.primary.withValues(alpha: 0.08),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: <Widget>[
+            Icon(
+              file.isImage
+                  ? Icons.image_outlined
+                  : Icons.insert_drive_file_outlined,
+              size: 16,
+              color: theme.colorScheme.primary,
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text(
+                file.fileName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: theme.textTheme.bodySmall?.copyWith(
+                  color: theme.colorScheme.primary,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+            const SizedBox(width: 6),
+            Icon(
+              Icons.north_east,
+              size: 12,
+              color: theme.colorScheme.primary,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+/// Mirrors the hint on the project discussion, so the two screens
+/// explain themselves against each other.
+class _ScopeHint extends StatelessWidget {
+  const _ScopeHint({required this.icon, required this.text});
+
+  final IconData icon;
+  final String text;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.fromLTRB(16, 10, 16, 10),
+      color: theme.colorScheme.surfaceContainerHighest,
+      child: Row(
+        children: <Widget>[
+          Icon(icon, size: 15, color: theme.colorScheme.onSurfaceVariant),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(text, style: theme.textTheme.bodySmall),
+          ),
+        ],
       ),
     );
   }

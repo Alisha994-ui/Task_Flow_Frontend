@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/project_constants.dart';
+import '../../core/push/push_service.dart';
 import '../../core/utils/contact.dart';
 import '../../models/user_model.dart';
 import '../../providers/admin_dashboard_provider.dart';
@@ -178,6 +179,14 @@ class ProfileScreen extends StatelessWidget {
 /// without this the next person to sign in would briefly see the previous
 /// user's tasks, notifications and counts.
 Future<void> signOut(BuildContext context) async {
+  // Do this first: once the token is gone the backend stops sending to
+  // this phone, so the next person on it gets nothing of yours.
+  await PushService.unregisterDevice();
+
+  if (!context.mounted) {
+    return;
+  }
+
   context.read<TaskProvider>().reset();
   context.read<NotificationProvider>().reset();
   context.read<TimeLogProvider>().reset();

@@ -14,6 +14,7 @@ import '../../../providers/notification_provider.dart';
 import '../../../providers/time_log_provider.dart';
 import '../../../providers/user_provider.dart';
 import '../../../widgets/admin/admin_widgets.dart';
+import '../../discussion/my_discussions_screen.dart';
 import '../../notifications/notification_list_screen.dart';
 import '../../profile/profile_screen.dart';
 import '../employee_time_logs_screen.dart';
@@ -96,6 +97,18 @@ class EmployeeMoreTab extends StatelessWidget {
         Card(
           child: Column(
             children: <Widget>[
+              ListTile(
+                leading: const Icon(Icons.folder_outlined),
+                title: const Text('My projects'),
+                subtitle: const Text('Open a project to talk to its team'),
+                trailing: const Icon(Icons.chevron_right),
+                onTap: () => Navigator.of(context).push<void>(
+                  MaterialPageRoute<void>(
+                    builder: (_) => const MyDiscussionsScreen(),
+                  ),
+                ),
+              ),
+              const Divider(height: 1, indent: 56),
               ListTile(
                 leading: const Icon(Icons.timer_outlined),
                 title: const Text('Time logs'),

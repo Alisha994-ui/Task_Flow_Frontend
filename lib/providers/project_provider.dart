@@ -43,7 +43,7 @@ class ProjectProvider extends ChangeNotifier {
 
   int get activeCount => _all
       .where((ProjectModel p) =>
-          !p.isArchived && p.status == ProjectStatus.inProgress)
+          !p.isArchived && p.status == ProjectStatus.active)
       .length;
 
   bool get hasActiveFilters =>

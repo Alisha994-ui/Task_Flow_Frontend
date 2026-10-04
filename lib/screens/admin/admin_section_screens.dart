@@ -4,6 +4,7 @@ import '../manager/task_actions.dart';
 import 'tabs/admin_tasks_tab.dart';
 import 'tabs/admin_teams_tab.dart';
 import 'tabs/admin_users_tab.dart';
+import 'team_form_screen.dart';
 import 'user_form_screen.dart';
 
 /// Full-screen wrappers around the admin tabs.
@@ -52,6 +53,15 @@ class AdminTeamsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(title: const Text('Teams')),
       body: const AdminTeamsTab(),
+      floatingActionButton: FloatingActionButton.extended(
+        onPressed: () => Navigator.of(context).push<bool>(
+          MaterialPageRoute<bool>(
+            builder: (_) => const TeamFormScreen(),
+          ),
+        ),
+        icon: const Icon(Icons.group_add_outlined),
+        label: const Text('New team'),
+      ),
     );
   }
 }

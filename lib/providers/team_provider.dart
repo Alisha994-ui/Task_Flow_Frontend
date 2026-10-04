@@ -1,17 +1,40 @@
 import 'package:flutter/foundation.dart';
 
+import '../models/team_member_model.dart';
 import '../models/team_model.dart';
 import '../services/team_service.dart';
 
 class TeamProvider extends ChangeNotifier {
   List<TeamModel> _all = <TeamModel>[];
+
+  /// Every TeamMember row the API will show us. Needed because removing
+  /// someone takes the row id, which team.members does not carry.
+  List<TeamMemberModel> _memberRows = <TeamMemberModel>[];
+
   bool _isLoading = false;
+  bool _isSaving = false;
   String? _error;
   String _search = '';
 
   bool get isLoading => _isLoading;
 
+  bool get isSaving => _isSaving;
+
   String? get error => _error;
+
+  List<TeamMemberModel> membersOf(int teamId) =>
+      _memberRows.where((TeamMemberModel m) => m.team == teamId).toList();
+
+  /// The TeamMember row for one person on one team, when it exists.
+  TeamMemberModel? memberRow({required int teamId, required int userId}) {
+    for (final TeamMemberModel row in _memberRows) {
+      if (row.team == teamId && row.user == userId) {
+        return row;
+      }
+    }
+
+    return null;
+  }
 
   String get search => _search;
 
@@ -79,10 +102,18 @@ class TeamProvider extends ChangeNotifier {
       _error = null;
     } catch (e) {
       _error = e.toString();
-    } finally {
-      _isLoading = false;
-      notifyListeners();
     }
+
+    // Membership rows are only needed by the admin screens; a failure
+    // here should not stop the team list from showing.
+    try {
+      _memberRows = await TeamService.getMembers();
+    } catch (_) {
+      // Leave whatever we had.
+    }
+
+    _isLoading = false;
+    notifyListeners();
   }
 
   Future<void> refresh() => load(silent: _all.isNotEmpty);
@@ -100,5 +131,167 @@ class TeamProvider extends ChangeNotifier {
     _error = null;
     _search = '';
     notifyListeners();
+  }
+
+  // ----------------------------------------------------------------- CRUD
+
+  Future<TeamModel?> createTeam({
+    required String name,
+    String description = '',
+    int? teamLead,
+    bool isActive = true,
+  }) async {
+    _isSaving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final TeamModel created = await TeamService.createTeam(
+        name: name,
+        description: description,
+        teamLead: teamLead,
+        isActive: isActive,
+      );
+
+      _all = <TeamModel>[created, ..._all];
+
+      return created;
+    } catch (e) {
+      _error = e.toString();
+
+      return null;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<TeamModel?> updateTeam({
+    required int id,
+    String? name,
+    String? description,
+    int? teamLead,
+    bool clearLead = false,
+    bool? isActive,
+  }) async {
+    _isSaving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final TeamModel updated = await TeamService.updateTeam(
+        id: id,
+        name: name,
+        description: description,
+        teamLead: teamLead,
+        clearLead: clearLead,
+        isActive: isActive,
+      );
+
+      _all =
+          _all.map((TeamModel t) => t.id == updated.id ? updated : t).toList();
+
+      return updated;
+    } catch (e) {
+      _error = e.toString();
+
+      return null;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> setActive(int id, bool active) async {
+    return await updateTeam(id: id, isActive: active) != null;
+  }
+
+  Future<bool> deleteTeam(int id) async {
+    _isSaving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await TeamService.deleteTeam(id);
+      _all = _all.where((TeamModel t) => t.id != id).toList();
+      _memberRows =
+          _memberRows.where((TeamMemberModel m) => m.team != id).toList();
+
+      return true;
+    } catch (e) {
+      _error = e.toString();
+
+      return false;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  // ----------------------------------------------------------- membership
+
+  Future<bool> addMember({required int teamId, required int userId}) async {
+    _isSaving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      final TeamMemberModel row = await TeamService.addMember(
+        teamId: teamId,
+        userId: userId,
+      );
+
+      _memberRows = <TeamMemberModel>[..._memberRows, row];
+
+      // team.members comes from the server, so refresh that team to
+      // keep every other screen honest.
+      await _refreshTeam(teamId);
+
+      return true;
+    } catch (e) {
+      _error = e.toString();
+
+      return false;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<bool> removeMember({
+    required int teamId,
+    required int memberRowId,
+  }) async {
+    _isSaving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      await TeamService.removeMember(memberRowId);
+      _memberRows = _memberRows
+          .where((TeamMemberModel m) => m.id != memberRowId)
+          .toList();
+
+      await _refreshTeam(teamId);
+
+      return true;
+    } catch (e) {
+      _error = e.toString();
+
+      return false;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
+  }
+
+  Future<void> _refreshTeam(int teamId) async {
+    try {
+      final TeamModel fresh = await TeamService.getTeam(teamId);
+
+      _all = _all.map((TeamModel t) => t.id == teamId ? fresh : t).toList();
+    } catch (_) {
+      // Not worth failing the whole action over.
+    }
   }
 }

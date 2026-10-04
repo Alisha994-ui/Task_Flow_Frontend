@@ -35,6 +35,11 @@ class TaskDetailProvider extends ChangeNotifier {
   List<AttachmentModel> get attachments =>
       List<AttachmentModel>.unmodifiable(_attachments);
 
+  /// Files posted with one particular comment.
+  List<AttachmentModel> attachmentsFor(int commentId) => _attachments
+      .where((AttachmentModel a) => a.comment == commentId)
+      .toList();
+
   bool _isUploading = false;
 
   bool get isUploading => _isUploading;
@@ -169,7 +174,12 @@ class TaskDetailProvider extends ChangeNotifier {
 
   // -------------------------------------------------------------- comments
 
-  Future<bool> addComment(String text) async {
+  /// Posts a comment, optionally with a file.
+  ///
+  /// The comment goes first because the attachment needs its id. If the
+  /// upload then fails, the comment still stands - better than losing
+  /// what the person wrote.
+  Future<bool> addComment(String text, {String? filePath}) async {
     _isBusy = true;
     notifyListeners();
 
@@ -180,6 +190,20 @@ class TaskDetailProvider extends ChangeNotifier {
       );
 
       _comments = <CommentModel>[..._comments, created];
+
+      if (filePath != null) {
+        try {
+          final AttachmentModel file = await AttachmentService.upload(
+            taskId: taskId,
+            filePath: filePath,
+            commentId: created.id,
+          );
+
+          _attachments = <AttachmentModel>[..._attachments, file];
+        } catch (e) {
+          _error = 'Comment posted, but the file did not upload.';
+        }
+      }
 
       // The backend writes a COMMENT_ADDED entry, so pull the log again.
       try {

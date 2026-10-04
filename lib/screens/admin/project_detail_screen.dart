@@ -11,6 +11,8 @@ import '../../providers/team_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/admin/admin_widgets.dart';
 import '../../widgets/admin/async_view.dart';
+import '../../widgets/project_people.dart';
+import '../discussion/project_discussion_screen.dart';
 import 'project_form_screen.dart';
 
 class ProjectDetailScreen extends StatelessWidget {
@@ -149,88 +151,82 @@ class _ProjectDetailView extends StatelessWidget {
         context.watch<ProjectDetailProvider>();
     final ProjectModel? project = detail.project;
 
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(project?.name ?? 'Project'),
-        actions: <Widget>[
-          if (project != null)
+    // Same shape as the manager's project screen: Discussion is a tab,
+    // in the project, like it is for every other role.
+    return DefaultTabController(
+      length: 3,
+      child: Scaffold(
+        appBar: AppBar(
+          title: Text(project?.name ?? 'Project'),
+          actions: <Widget>[
+            if (project != null)
+              IconButton(
+                tooltip: 'Edit project',
+                onPressed: () => _edit(context, project),
+                icon: const Icon(Icons.edit_outlined),
+              ),
             IconButton(
-              tooltip: 'Edit project',
-              onPressed: () => _edit(context, project),
-              icon: const Icon(Icons.edit_outlined),
+              tooltip: 'Refresh',
+              onPressed: detail.refresh,
+              icon: const Icon(Icons.refresh),
             ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: detail.refresh,
-            icon: const Icon(Icons.refresh),
+          ],
+          bottom: const TabBar(
+            tabs: <Widget>[
+              Tab(text: 'Overview'),
+              Tab(text: 'Members'),
+              Tab(text: 'Discussion'),
+            ],
           ),
-        ],
-      ),
-      body: AsyncView(
-        isLoading: detail.isLoading && project == null,
-        error: project == null ? detail.error : null,
-        isEmpty: false,
-        onRetry: detail.refresh,
-        child: project == null
-            ? const SizedBox.shrink()
-            : RefreshIndicator(
-                onRefresh: detail.refresh,
-                child: ListView(
-                  physics: const AlwaysScrollableScrollPhysics(),
-                  padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+        ),
+        body: AsyncView(
+          isLoading: detail.isLoading && project == null,
+          error: project == null ? detail.error : null,
+          isEmpty: false,
+          onRetry: detail.refresh,
+          child: project == null
+              ? const SizedBox.shrink()
+              : TabBarView(
                   children: <Widget>[
-                    _SummaryCard(project: project),
-                    const SizedBox(height: 20),
-                    if (detail.progress.isNotEmpty) ...<Widget>[
-                      const SectionHeader(
-                        title: 'Progress',
-                        subtitle: 'Reported by the project progress endpoint',
-                      ),
-                      const SizedBox(height: 8),
-                      _ProgressCard(data: detail.progress),
-                      const SizedBox(height: 20),
-                    ],
-                    SectionHeader(
-                      title: 'Members',
-                      subtitle: detail.members.isEmpty
-                          ? 'Nobody assigned yet'
-                          : '${detail.members.length} assigned',
-                      trailing: FilledButton.tonalIcon(
-                        onPressed: detail.isMemberBusy
-                            ? null
-                            : () => _addMember(context),
-                        icon: const Icon(Icons.person_add_alt, size: 18),
-                        label: const Text('Add'),
+                    RefreshIndicator(
+                      onRefresh: detail.refresh,
+                      child: ListView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
+                        children: <Widget>[
+                          _SummaryCard(project: project),
+                          if (detail.progress.isNotEmpty) ...<Widget>[
+                            const SizedBox(height: 20),
+                            const SectionHeader(
+                              title: 'Progress',
+                              subtitle:
+                                  'Reported by the project progress endpoint',
+                            ),
+                            const SizedBox(height: 8),
+                            _ProgressCard(data: detail.progress),
+                          ],
+                        ],
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    if (detail.members.isEmpty)
-                      Card(
-                        margin: EdgeInsets.zero,
-                        child: ListTile(
-                          leading: const Icon(Icons.group_off_outlined),
-                          title: const Text('No members yet'),
-                          subtitle: const Text(
-                            'Add people so they can see this project.',
-                          ),
-                          onTap: () => _addMember(context),
-                        ),
-                      )
-                    else
-                      ...detail.members.map(
-                        (ProjectMemberModel member) => Padding(
-                          padding: const EdgeInsets.only(bottom: 8),
-                          child: _MemberTile(
-                            member: member,
-                            onRemove: detail.isMemberBusy
-                                ? null
-                                : () => _removeMember(context, member),
-                          ),
-                        ),
+                    RefreshIndicator(
+                      onRefresh: detail.refresh,
+                      child: ProjectPeople(
+                        project: project,
+                        members: detail.members,
+                        busy: detail.isMemberBusy,
+                        onAdd: () => _addMember(context),
+                        onRemove: (ProjectMemberModel member) =>
+                            _removeMember(context, member),
                       ),
+                    ),
+                    ProjectDiscussionScreen(
+                      projectId: project.id,
+                      projectName: project.name,
+                      embedded: true,
+                    ),
                   ],
                 ),
-              ),
+        ),
       ),
     );
   }
@@ -461,50 +457,6 @@ class _ProgressCard extends StatelessWidget {
     }
 
     return value.toString();
-  }
-}
-
-class _MemberTile extends StatelessWidget {
-  const _MemberTile({required this.member, required this.onRemove});
-
-  final ProjectMemberModel member;
-  final VoidCallback? onRemove;
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final UserProvider users = context.watch<UserProvider>();
-    final UserModel? user = users.byId(member.user);
-    final String name =
-        member.userName.isNotEmpty ? member.userName : users.nameFor(member.user);
-
-    return Card(
-      margin: EdgeInsets.zero,
-      child: ListTile(
-        leading: UserAvatar(
-          name: name,
-          imageUrl: user?.profileImage,
-          color: user == null ? null : UserRoles.color(user.role),
-        ),
-        title: Text(name, overflow: TextOverflow.ellipsis),
-        subtitle: Text(
-          user == null
-              ? 'Joined ${formatDate(member.joinedAt, fallback: 'recently')}'
-              : '${UserRoles.label(user.role)} - joined '
-                  '${formatDate(member.joinedAt, fallback: 'recently')}',
-          style: theme.textTheme.bodySmall,
-          overflow: TextOverflow.ellipsis,
-        ),
-        trailing: IconButton(
-          tooltip: 'Remove from project',
-          onPressed: onRemove,
-          icon: Icon(
-            Icons.person_remove_outlined,
-            color: theme.colorScheme.error,
-          ),
-        ),
-      ),
-    );
   }
 }
 

@@ -5,10 +5,8 @@ import '../../core/constants/project_constants.dart';
 import '../../core/utils/app_date_utils.dart';
 import '../../core/utils/project_rules.dart';
 import '../../models/activity_log_model.dart';
-import '../../models/project_member_model.dart';
 import '../../models/project_model.dart';
 import '../../models/task_model.dart';
-import '../../models/user_model.dart';
 import '../../providers/manager_provider.dart';
 import '../../providers/project_detail_provider.dart';
 import '../../providers/task_provider.dart';
@@ -18,6 +16,8 @@ import '../../services/task_service.dart';
 import '../../widgets/admin/admin_widgets.dart';
 import '../../widgets/admin/async_view.dart';
 import '../../widgets/manager/task_tile.dart';
+import '../../widgets/project_people.dart';
+import '../discussion/project_discussion_screen.dart';
 import 'task_actions.dart';
 import 'task_detail_screen.dart';
 
@@ -37,13 +37,46 @@ class ManagerProjectDetailScreen extends StatelessWidget {
   }
 }
 
-class _ManagerProjectDetailView extends StatelessWidget {
+class _ManagerProjectDetailView extends StatefulWidget {
   const _ManagerProjectDetailView({required this.projectId});
 
   final int projectId;
 
   @override
+  State<_ManagerProjectDetailView> createState() =>
+      _ManagerProjectDetailViewState();
+}
+
+class _ManagerProjectDetailViewState extends State<_ManagerProjectDetailView>
+    with SingleTickerProviderStateMixin {
+  static const int _tasksTab = 1;
+
+  late final TabController _tabs;
+
+  @override
+  void initState() {
+    super.initState();
+
+    // A controller rather than DefaultTabController, because the FAB
+    // has to know which tab is open: on Discussion it would sit on top
+    // of the send button.
+    _tabs = TabController(length: 5, vsync: this);
+    _tabs.addListener(() {
+      if (!_tabs.indexIsChanging) {
+        setState(() {});
+      }
+    });
+  }
+
+  @override
+  void dispose() {
+    _tabs.dispose();
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final int projectId = widget.projectId;
     final ProjectDetailProvider detail =
         context.watch<ProjectDetailProvider>();
     final ProjectModel? project = detail.project;
@@ -54,9 +87,7 @@ class _ManagerProjectDetailView extends StatelessWidget {
         context.watch<ManagerProvider>().managerId != null &&
             isProjectClosed(project);
 
-    return DefaultTabController(
-      length: 4,
-      child: Scaffold(
+    return Scaffold(
         appBar: AppBar(
           title: Text(project?.name ?? 'Project'),
           actions: <Widget>[
@@ -66,18 +97,22 @@ class _ManagerProjectDetailView extends StatelessWidget {
               icon: const Icon(Icons.refresh),
             ),
           ],
-          bottom: const TabBar(
+          bottom: TabBar(
+            controller: _tabs,
             isScrollable: true,
             tabAlignment: TabAlignment.start,
-            tabs: <Widget>[
+            tabs: const <Widget>[
               Tab(text: 'Overview'),
               Tab(text: 'Tasks'),
               Tab(text: 'Members'),
+              Tab(text: 'Discussion'),
               Tab(text: 'Activity'),
             ],
           ),
         ),
-        floatingActionButton: locked
+        // Only on Tasks. Anywhere else it is either useless or, on
+        // Discussion, directly over the send button.
+        floatingActionButton: (locked || _tabs.index != _tasksTab)
             ? null
             : FloatingActionButton.extended(
                 onPressed: () =>
@@ -93,14 +128,25 @@ class _ManagerProjectDetailView extends StatelessWidget {
           child: project == null
               ? const SizedBox.shrink()
               : TabBarView(
+                  controller: _tabs,
                   children: <Widget>[
                     _OverviewTab(project: project),
                     _TasksTab(projectId: projectId),
-                    const _MembersTab(),
+                    RefreshIndicator(
+                      onRefresh: detail.refresh,
+                      child: ProjectPeople(
+                        project: project,
+                        members: detail.members,
+                      ),
+                    ),
+                    ProjectDiscussionScreen(
+                      projectId: projectId,
+                      projectName: project.name,
+                      embedded: true,
+                    ),
                     _ActivityTab(projectId: projectId),
                   ],
                 ),
-        ),
       ),
     );
   }
@@ -333,80 +379,6 @@ class _TasksTab extends StatelessWidget {
             onAssignTap: () => TaskActions.reassign(context, task),
             onEdit: () => TaskActions.edit(context, task),
             onDelete: () => TaskActions.delete(context, task),
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _MembersTab extends StatelessWidget {
-  const _MembersTab();
-
-  @override
-  Widget build(BuildContext context) {
-    final ThemeData theme = Theme.of(context);
-    final ProjectDetailProvider detail =
-        context.watch<ProjectDetailProvider>();
-    final UserProvider users = context.watch<UserProvider>();
-    final TaskProvider tasks = context.watch<TaskProvider>();
-
-    if (detail.members.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Text(
-            'No members on this project yet. An admin can add them from the '
-            'admin panel.',
-            textAlign: TextAlign.center,
-            style: theme.textTheme.bodySmall?.copyWith(
-              color: theme.colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return RefreshIndicator(
-      onRefresh: detail.refresh,
-      child: ListView.separated(
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
-        itemCount: detail.members.length,
-        separatorBuilder: (_, _) => const SizedBox(height: 8),
-        itemBuilder: (BuildContext context, int index) {
-          final ProjectMemberModel member = detail.members[index];
-          final UserModel? user = users.byId(member.user);
-          final String name = member.userName.isNotEmpty
-              ? member.userName
-              : users.nameFor(member.user);
-
-          final int openTasks = tasks.allTasks
-              .where((TaskModel t) => t.assignee == member.user && !t.isCompleted)
-              .length;
-
-          return Card(
-            margin: EdgeInsets.zero,
-            child: ListTile(
-              leading: UserAvatar(
-                name: name,
-                imageUrl: user?.profileImage,
-                color: user == null ? null : UserRoles.color(user.role),
-              ),
-              title: Text(name, overflow: TextOverflow.ellipsis),
-              subtitle: Text(
-                user == null
-                    ? 'Joined ${formatDate(member.joinedAt, fallback: 'recently')}'
-                    : UserRoles.label(user.role),
-                style: theme.textTheme.bodySmall,
-              ),
-              trailing: LabelChip(
-                text: '$openTasks open',
-                color: openTasks == 0
-                    ? const Color(0xFF059669)
-                    : const Color(0xFF2563EB),
-              ),
-            ),
           );
         },
       ),

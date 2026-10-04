@@ -10,14 +10,14 @@ class ProjectStatus {
   const ProjectStatus._();
 
   static const String planning = 'PLANNING';
-  static const String inProgress = 'IN_PROGRESS';
+  static const String active = 'ACTIVE';
   static const String onHold = 'ON_HOLD';
   static const String completed = 'COMPLETED';
   static const String cancelled = 'CANCELLED';
 
   static const List<String> all = <String>[
     planning,
-    inProgress,
+    active,
     onHold,
     completed,
     cancelled,
@@ -29,7 +29,7 @@ class ProjectStatus {
     switch (value) {
       case planning:
         return const Color(0xFF6366F1);
-      case inProgress:
+      case active:
         return const Color(0xFF2563EB);
       case onHold:
         return const Color(0xFFD97706);

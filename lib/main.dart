@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import 'core/push/push_service.dart';
 import 'core/theme/app_theme.dart';
 import 'providers/admin_dashboard_provider.dart';
 import 'providers/auth_provider.dart';
@@ -13,8 +14,12 @@ import 'providers/time_log_provider.dart';
 import 'providers/user_provider.dart';
 import 'routes/app_routes.dart';
 
-void main() {
+void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  // Firebase has to be up before the first frame, otherwise a push that
+  // launched the app is lost.
+  await PushService.init();
 
   runApp(
     MultiProvider(
@@ -52,6 +57,7 @@ class TaskFlowApp extends StatelessWidget {
     return MaterialApp(
       title: 'TaskFlow',
       debugShowCheckedModeBanner: false,
+      navigatorKey: appNavigatorKey,
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.system,

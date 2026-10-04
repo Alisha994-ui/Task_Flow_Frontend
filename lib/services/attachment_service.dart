@@ -35,14 +35,22 @@ class AttachmentService {
   }
 
   /// `uploaded_by` is filled in by the backend, so it is not sent.
+  ///
+  /// Pass [commentId] when the file is going out with a comment - the
+  /// task id is still required, so the file stays findable from the
+  /// task's Files section either way.
   static Future<AttachmentModel> upload({
     required int taskId,
     required String filePath,
+    int? commentId,
   }) async {
     final response = await ApiClient.postMultipart(
       '/attachments/',
       filePath: filePath,
-      fields: <String, String>{'task': '$taskId'},
+      fields: <String, String>{
+        'task': '$taskId',
+        if (commentId != null) 'comment': '$commentId',
+      },
     );
 
     return AttachmentModel.fromJson(Map<String, dynamic>.from(response));
