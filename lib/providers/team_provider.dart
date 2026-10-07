@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/team_member_model.dart';
@@ -7,8 +8,8 @@ import '../services/team_service.dart';
 class TeamProvider extends ChangeNotifier {
   List<TeamModel> _all = <TeamModel>[];
 
-  /// Every TeamMember row the API will show us. Needed because removing
-  /// someone takes the row id, which team.members does not carry.
+  /// Every TeamMember row returned by the API.
+  /// Needed because removing someone requires the row id.
   List<TeamMemberModel> _memberRows = <TeamMemberModel>[];
 
   bool _isLoading = false;
@@ -22,11 +23,50 @@ class TeamProvider extends ChangeNotifier {
 
   String? get error => _error;
 
-  List<TeamMemberModel> membersOf(int teamId) =>
-      _memberRows.where((TeamMemberModel m) => m.team == teamId).toList();
+  String get search => _search;
 
-  /// The TeamMember row for one person on one team, when it exists.
-  TeamMemberModel? memberRow({required int teamId, required int userId}) {
+  List<TeamModel> get allTeams =>
+      List<TeamModel>.unmodifiable(_all);
+
+  int get activeCount =>
+      _all.where((TeamModel t) => t.isActive).length;
+
+  List<TeamMemberModel> membersOf(int teamId) {
+    return _memberRows
+        .where((TeamMemberModel m) => m.team == teamId)
+        .toList();
+  }
+
+  /// Returns only the teams where this user is the Team Lead.
+  List<TeamModel> teamsForTeamLead(int teamLeadId) {
+    return _all.where((TeamModel team) {
+      return team.isActive && team.teamLead == teamLeadId;
+    }).toList();
+  }
+
+  /// Returns only members belonging to the Team Lead's own teams.
+  List<TeamMemberModel> membersForTeamLead(int teamLeadId) {
+    final Set<int> teamIds = teamsForTeamLead(teamLeadId)
+        .map((TeamModel team) => team.id)
+        .toSet();
+
+    return _memberRows
+        .where((TeamMemberModel member) => teamIds.contains(member.team))
+        .toList();
+  }
+
+  /// Returns user IDs belonging only to the Team Lead's own teams.
+  Set<int> memberIdsForTeamLead(int teamLeadId) {
+    return membersForTeamLead(teamLeadId)
+        .map((TeamMemberModel member) => member.user)
+        .toSet();
+  }
+
+  /// The TeamMember row for one person on one team.
+  TeamMemberModel? memberRow({
+    required int teamId,
+    required int userId,
+  }) {
     for (final TeamMemberModel row in _memberRows) {
       if (row.team == teamId && row.user == userId) {
         return row;
@@ -36,12 +76,6 @@ class TeamProvider extends ChangeNotifier {
     return null;
   }
 
-  String get search => _search;
-
-  List<TeamModel> get allTeams => List<TeamModel>.unmodifiable(_all);
-
-  int get activeCount => _all.where((TeamModel t) => t.isActive).length;
-
   List<TeamModel> get teams {
     final String query = _search.trim().toLowerCase();
 
@@ -50,9 +84,11 @@ class TeamProvider extends ChangeNotifier {
     }
 
     return _all
-        .where((TeamModel t) =>
-            t.name.toLowerCase().contains(query) ||
-            t.description.toLowerCase().contains(query))
+        .where(
+          (TeamModel t) =>
+              t.name.toLowerCase().contains(query) ||
+              t.description.toLowerCase().contains(query),
+        )
         .toList();
   }
 
@@ -101,15 +137,14 @@ class TeamProvider extends ChangeNotifier {
       _all = await TeamService.getTeams();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
     }
 
-    // Membership rows are only needed by the admin screens; a failure
-    // here should not stop the team list from showing.
+    // Membership rows are required for team-member filtering.
     try {
       _memberRows = await TeamService.getMembers();
     } catch (_) {
-      // Leave whatever we had.
+      // Keep existing membership data if refresh fails.
     }
 
     _isLoading = false;
@@ -127,13 +162,17 @@ class TeamProvider extends ChangeNotifier {
   /// Clears everything on sign out.
   void reset() {
     _all = <TeamModel>[];
+    _memberRows = <TeamMemberModel>[];
     _isLoading = false;
+    _isSaving = false;
     _error = null;
     _search = '';
     notifyListeners();
   }
 
-  // ----------------------------------------------------------------- CRUD
+  // -----------------------------------------------------------------
+  // CRUD
+  // -----------------------------------------------------------------
 
   Future<TeamModel?> createTeam({
     required String name,
@@ -153,12 +192,14 @@ class TeamProvider extends ChangeNotifier {
         isActive: isActive,
       );
 
-      _all = <TeamModel>[created, ..._all];
+      _all = <TeamModel>[
+        created,
+        ..._all,
+      ];
 
       return created;
     } catch (e) {
-      _error = e.toString();
-
+      _error = friendlyError(e);
       return null;
     } finally {
       _isSaving = false;
@@ -188,13 +229,16 @@ class TeamProvider extends ChangeNotifier {
         isActive: isActive,
       );
 
-      _all =
-          _all.map((TeamModel t) => t.id == updated.id ? updated : t).toList();
+      _all = _all
+          .map(
+            (TeamModel t) =>
+                t.id == updated.id ? updated : t,
+          )
+          .toList();
 
       return updated;
     } catch (e) {
-      _error = e.toString();
-
+      _error = friendlyError(e);
       return null;
     } finally {
       _isSaving = false;
@@ -203,7 +247,11 @@ class TeamProvider extends ChangeNotifier {
   }
 
   Future<bool> setActive(int id, bool active) async {
-    return await updateTeam(id: id, isActive: active) != null;
+    return await updateTeam(
+          id: id,
+          isActive: active,
+        ) !=
+        null;
   }
 
   Future<bool> deleteTeam(int id) async {
@@ -213,14 +261,18 @@ class TeamProvider extends ChangeNotifier {
 
     try {
       await TeamService.deleteTeam(id);
-      _all = _all.where((TeamModel t) => t.id != id).toList();
-      _memberRows =
-          _memberRows.where((TeamMemberModel m) => m.team != id).toList();
+
+      _all = _all
+          .where((TeamModel t) => t.id != id)
+          .toList();
+
+      _memberRows = _memberRows
+          .where((TeamMemberModel m) => m.team != id)
+          .toList();
 
       return true;
     } catch (e) {
-      _error = e.toString();
-
+      _error = friendlyError(e);
       return false;
     } finally {
       _isSaving = false;
@@ -228,29 +280,35 @@ class TeamProvider extends ChangeNotifier {
     }
   }
 
-  // ----------------------------------------------------------- membership
+  // -----------------------------------------------------------
+  // Membership
+  // -----------------------------------------------------------
 
-  Future<bool> addMember({required int teamId, required int userId}) async {
+  Future<bool> addMember({
+    required int teamId,
+    required int userId,
+  }) async {
     _isSaving = true;
     _error = null;
     notifyListeners();
 
     try {
-      final TeamMemberModel row = await TeamService.addMember(
+      final TeamMemberModel row =
+          await TeamService.addMember(
         teamId: teamId,
         userId: userId,
       );
 
-      _memberRows = <TeamMemberModel>[..._memberRows, row];
+      _memberRows = <TeamMemberModel>[
+        ..._memberRows,
+        row,
+      ];
 
-      // team.members comes from the server, so refresh that team to
-      // keep every other screen honest.
       await _refreshTeam(teamId);
 
       return true;
     } catch (e) {
-      _error = e.toString();
-
+      _error = friendlyError(e);
       return false;
     } finally {
       _isSaving = false;
@@ -268,16 +326,19 @@ class TeamProvider extends ChangeNotifier {
 
     try {
       await TeamService.removeMember(memberRowId);
+
       _memberRows = _memberRows
-          .where((TeamMemberModel m) => m.id != memberRowId)
+          .where(
+            (TeamMemberModel m) =>
+                m.id != memberRowId,
+          )
           .toList();
 
       await _refreshTeam(teamId);
 
       return true;
     } catch (e) {
-      _error = e.toString();
-
+      _error = friendlyError(e);
       return false;
     } finally {
       _isSaving = false;
@@ -287,11 +348,17 @@ class TeamProvider extends ChangeNotifier {
 
   Future<void> _refreshTeam(int teamId) async {
     try {
-      final TeamModel fresh = await TeamService.getTeam(teamId);
+      final TeamModel fresh =
+          await TeamService.getTeam(teamId);
 
-      _all = _all.map((TeamModel t) => t.id == teamId ? fresh : t).toList();
+      _all = _all
+          .map(
+            (TeamModel t) =>
+                t.id == teamId ? fresh : t,
+          )
+          .toList();
     } catch (_) {
-      // Not worth failing the whole action over.
+      // Keep existing team data if refresh fails.
     }
   }
 }

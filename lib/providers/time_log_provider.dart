@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/time_log_model.dart';
@@ -53,6 +54,20 @@ class TimeLogProvider extends ChangeNotifier {
 
   /// Every timer running right now, whoever it belongs to. Empty for an
   /// employee, since the backend only sends them their own rows.
+  /// The running log for one task, if there is one.
+  ///
+  /// Used when a status change starts or stops the clock - the app has
+  /// the task, not the log.
+  TimeLogModel? runningForTask(int taskId) {
+    for (final TimeLogModel log in _logs) {
+      if (log.task == taskId && log.isRunning) {
+        return log;
+      }
+    }
+
+    return null;
+  }
+
   List<TimeLogModel> get runningLogs =>
       _logs.where((TimeLogModel l) => l.isRunning).toList();
 
@@ -129,7 +144,7 @@ class TimeLogProvider extends ChangeNotifier {
       _logs = await TimeLogService.getLogs();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -154,7 +169,7 @@ class TimeLogProvider extends ChangeNotifier {
 
       return null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return 'Could not start the timer.';
     } finally {
@@ -180,7 +195,7 @@ class TimeLogProvider extends ChangeNotifier {
 
       return null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return 'Could not stop the timer.';
     } finally {

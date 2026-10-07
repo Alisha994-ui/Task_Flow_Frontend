@@ -40,12 +40,14 @@ class EmployeeDashboardTab extends StatelessWidget {
       isEmpty: false,
       onRetry: tasks.refresh,
       child: RefreshIndicator(
-        onRefresh: () async {
-          await Future.wait<void>(<Future<void>>[
+        onRefresh: () => refreshWithFeedback(
+          context,
+          () => Future.wait<void>(<Future<void>>[
             tasks.refresh(),
             timer.refresh(),
-          ]);
-        },
+          ]),
+          () => tasks.error,
+        ),
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
@@ -310,7 +312,7 @@ class _ActiveTimerCardState extends State<ActiveTimerCard> {
                   ),
                   if (task != null)
                     Text(
-                      projects.byId(task.project)?.name ?? '',
+                      task.projectName ?? projects.byId(task.project)?.name ?? '',
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                       style: theme.textTheme.labelSmall?.copyWith(

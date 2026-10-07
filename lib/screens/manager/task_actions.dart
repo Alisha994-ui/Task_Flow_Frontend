@@ -1,14 +1,18 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-
+import '../../core/constants/project_constants.dart';
+import '../../core/constants/task_constants.dart';
 import '../../core/utils/project_rules.dart';
 import '../../models/project_model.dart';
 import '../../models/task_model.dart';
+import '../../models/time_log_model.dart';
 import '../../models/team_model.dart';
 import '../../models/user_model.dart';
+import '../../providers/auth_provider.dart';
 import '../../providers/manager_provider.dart';
 import '../../providers/project_provider.dart';
 import '../../providers/task_provider.dart';
+import '../../providers/time_log_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/manager/task_tile.dart';
@@ -85,7 +89,69 @@ class TaskActions {
     return true;
   }
 
-  static Future<void> changeStatus(BuildContext context, TaskModel task) async {
+  /// Moves a task to another status.
+  ///
+  /// With [toStatus] the move happens straight away - that is the board
+  /// dropping a card into a column. Without it, the person picks from a
+  /// sheet.
+  /// Keeps the timer honest when a task's status moves.
+  ///
+  ///   -> In progress : start the clock on this task
+  ///   -> Completed   : stop it
+  ///
+  /// People forget the timer in both directions - they start work and
+  /// never press start, then finish and leave it running overnight. The
+  /// status is the thing they do remember to change, so the clock
+  /// follows it.
+  ///
+  /// Only for the person doing the work. A manager moving somebody
+  /// else's task to In progress must not start a clock against their
+  /// own name.
+  static Future<void> syncTimerForStatus(
+    BuildContext context,
+    TaskModel task,
+    String status,
+  ) async {
+    final TimeLogProvider timers = context.read<TimeLogProvider>();
+    final int? me = timers.currentUserId;
+
+    if (me == null || task.assignee != me) {
+      return;
+    }
+
+    try {
+      final TimeLogModel? active = timers.activeLog;
+
+      if (status == TaskStatus.inProgress) {
+        if (active?.task == task.id) {
+          return;
+        }
+
+        // One clock at a time: moving to a new task means the last one
+        // is no longer what they are doing.
+        if (active != null) {
+          await timers.stop();
+        }
+
+        await timers.start(task.id);
+
+        return;
+      }
+
+      if (status == TaskStatus.completed && active?.task == task.id) {
+        await timers.stop();
+      }
+    } catch (_) {
+      // The status change already went through. A timer that did not
+      // follow is a small thing - never undo somebody's work over it.
+    }
+  }
+
+  static Future<void> changeStatus(
+    BuildContext context,
+    TaskModel task, {
+    String? toStatus,
+  }) async {
     if (_blocked(context, task.project)) {
       return;
     }
@@ -95,7 +161,8 @@ class TaskActions {
     }
 
     final TaskProvider tasks = context.read<TaskProvider>();
-    final String? status = await pickTaskStatus(context, task.status);
+    final String? status =
+        toStatus ?? await pickTaskStatus(context, task.status);
 
     if (status == null || status == task.status) {
       return;
@@ -105,6 +172,14 @@ class TaskActions {
 
     if (!context.mounted) {
       return;
+    }
+
+    if (ok) {
+      await syncTimerForStatus(context, task, status);
+
+      if (!context.mounted) {
+        return;
+      }
     }
 
     _snack(
@@ -127,8 +202,9 @@ class TaskActions {
     final ProjectProvider projects = context.read<ProjectProvider>();
 
     final TeamModel? team = teams.byId(projects.byId(task.project)?.team);
+    final bool teamHasNoMembers = team == null || team.members.isEmpty;
 
-    final List<UserModel> scoped = team == null || team.members.isEmpty
+    final List<UserModel> scoped = teamHasNoMembers
         ? users.allUsers
         : users.allUsers
             .where((UserModel u) =>
@@ -137,8 +213,11 @@ class TaskActions {
 
     final int? picked = await pickAssignee(
       context,
-      candidates: scoped.isEmpty ? users.allUsers : scoped,
+      candidates: scoped,
       current: task.assignee,
+      scopeNote: teamHasNoMembers
+          ? "This project's team has nobody in it yet - showing everyone."
+          : null,
     );
 
     if (picked == null) {
@@ -147,6 +226,16 @@ class TaskActions {
 
     final int? userId = picked == -1 ? null : picked;
     final bool ok = await tasks.assignTo(task.id, userId);
+
+    // Belt and braces: assignTo() already refreshes this task from the
+    // server's response, but the card must never sit showing the old
+    // assignee until a manual pull-to-refresh - so also apply the
+    // change locally right away.
+    if (ok) {
+      tasks.replaceLocally(
+        task.copyWith(assignee: userId, clearAssignee: userId == null),
+      );
+    }
 
     if (!context.mounted) {
       return;
@@ -170,18 +259,35 @@ class TaskActions {
       return;
     }
 
-    final bool? saved = await Navigator.of(context).push<bool>(
-      MaterialPageRoute<bool>(
-        builder: (_) => TaskFormScreen(
-          task: task,
-          selectableProjects: selectableProjects,
-        ),
-      ),
-    );
+    // Otherwise, if a search field on the list behind this screen still
+    // held focus, Flutter restores that focus (and the keyboard with it)
+    // the moment this route pops back to it.
+    FocusScope.of(context).unfocus();
 
-    if (saved == true && context.mounted) {
-      _snack(context, 'Task updated');
-    }
+    final bool? saved = await Navigator.of(context).push<bool>(
+  MaterialPageRoute<bool>(
+    builder: (_) => TaskFormScreen(
+      task: task,
+      selectableProjects: selectableProjects,
+    ),
+  ),
+);
+
+if (!context.mounted) {
+  return;
+}
+
+// Prevent Flutter from restoring focus to the search field
+// when returning from the edit screen.
+WidgetsBinding.instance.addPostFrameCallback((_) {
+  if (context.mounted) {
+    FocusManager.instance.primaryFocus?.unfocus();
+  }
+});
+
+if (saved == true) {
+  _snack(context, 'Task updated');
+}
   }
 
   static Future<void> create(
@@ -192,6 +298,8 @@ class TaskActions {
     if (projectId != null && _blocked(context, projectId)) {
       return;
     }
+
+    FocusScope.of(context).unfocus();
 
     final bool? saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(
@@ -209,6 +317,14 @@ class TaskActions {
 
   static Future<void> delete(BuildContext context, TaskModel task) async {
     if (_blocked(context, task.project)) {
+      return;
+    }
+
+    // Defence in depth: even if some screen wires this up by mistake, a
+    // Team Lead never gets to actually delete - only the confirm dialog
+    // dismisses itself here, so this is never a dead end they can't
+    // explain to themselves (they simply never reach it from the menu).
+    if (context.read<AuthProvider>().role == UserRoles.teamLead) {
       return;
     }
 

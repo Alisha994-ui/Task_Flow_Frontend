@@ -81,7 +81,10 @@ class _AdminProjectsTabState extends State<AdminProjectsTab> {
     if (ok) {
       _snack(project.isArchived ? 'Project restored' : 'Project archived');
     } else {
-      _snack(provider.error ?? 'Could not update the project', isError: true);
+      _snack(
+        provider.error ?? 'Could not update the project',
+        isError: true,
+      );
     }
   }
 
@@ -126,7 +129,10 @@ class _AdminProjectsTabState extends State<AdminProjectsTab> {
         await context.read<AdminDashboardProvider>().refresh();
       }
     } else {
-      _snack(provider.error ?? 'Could not delete the project', isError: true);
+      _snack(
+        provider.error ?? 'Could not delete the project',
+        isError: true,
+      );
     }
   }
 
@@ -164,7 +170,7 @@ class _AdminProjectsTabState extends State<AdminProjectsTab> {
               onRefresh: provider.refresh,
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+                padding: const EdgeInsets.fromLTRB(16, 8, 16, 180),
                 itemCount: projects.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 12),
                 itemBuilder: (BuildContext context, int index) {
@@ -299,7 +305,11 @@ class _DropdownFilter extends StatelessWidget {
               value: kFilterAll,
               child: Row(
                 children: <Widget>[
-                  Icon(icon, size: 16, color: theme.colorScheme.outline),
+                  Icon(
+                    icon,
+                    size: 16,
+                    color: theme.colorScheme.outline,
+                  ),
                   const SizedBox(width: 6),
                   Text(allLabel),
                 ],
@@ -420,7 +430,9 @@ class _ProjectCard extends StatelessWidget {
                           ),
                           title: Text(
                             'Delete',
-                            style: TextStyle(color: theme.colorScheme.error),
+                            style: TextStyle(
+                              color: theme.colorScheme.error,
+                            ),
                           ),
                         ),
                       ),

@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/coach/coach_target.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/project_constants.dart';
@@ -57,6 +58,30 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<UserProvider>().ensureLoaded();
     });
+
+    _markClean();
+  }
+
+  // Snapshot of what the form looked like the last time it was saved
+  // (or opened, if never saved) - compared against on Back so a form
+  // with nothing new typed never triggers "Discard changes?".
+  late String _savedName;
+  late String _savedDescription;
+  late int? _savedTeamLead;
+  late bool _savedIsActive;
+
+  void _markClean() {
+    _savedName = _nameController.text;
+    _savedDescription = _descriptionController.text;
+    _savedTeamLead = _teamLead;
+    _savedIsActive = _isActive;
+  }
+
+  bool get _isDirty {
+    return _nameController.text != _savedName ||
+        _descriptionController.text != _savedDescription ||
+        _teamLead != _savedTeamLead ||
+        _isActive != _savedIsActive;
   }
 
   @override
@@ -126,6 +151,7 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
 
     // Stay put so members can be added to the team just created.
     setState(() => _savedTeamId = result!.id);
+    _markClean();
     _snack('Team saved. Add its members below.');
   }
 
@@ -257,29 +283,38 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
     final bool leadExists =
         users.allUsers.any((UserModel u) => u.id == _teamLead);
 
-    return Scaffold(
+    return DiscardGuard(
+      isDirty: () => _isDirty,
+      child: Scaffold(
       appBar: AppBar(
-        title: Text(widget.isEdit ? 'Edit team' : 'New team'),
-      ),
+       leading: IconButton(
+       icon: const Icon(Icons.arrow_back),
+       onPressed: () => DiscardGuard.handleBack(context),
+       ),
+       title: Text(widget.isEdit ? 'Edit team' : 'New team'),
+    ),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: <Widget>[
-            TextFormField(
-              controller: _nameController,
-              textCapitalization: TextCapitalization.words,
-              decoration: const InputDecoration(
-                labelText: 'Team name',
-                border: OutlineInputBorder(),
+            CoachTarget(
+              name: 'team_name',
+              child: TextFormField(
+                controller: _nameController,
+                textCapitalization: TextCapitalization.words,
+                decoration: const InputDecoration(
+                  labelText: 'Team name',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (String? value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Give the team a name';
+                  }
+  
+                  return null;
+                },
               ),
-              validator: (String? value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Give the team a name';
-                }
-
-                return null;
-              },
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -294,30 +329,33 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            DropdownButtonFormField<int?>(
-              initialValue: leadExists ? _teamLead : null,
-              isExpanded: true,
-              decoration: const InputDecoration(
-                labelText: 'Team lead',
-                border: OutlineInputBorder(),
-                helperText: 'They get the team lead panel for this team',
-              ),
-              items: <DropdownMenuItem<int?>>[
-                const DropdownMenuItem<int?>(
-                  value: null,
-                  child: Text('No lead yet'),
+            CoachTarget(
+              name: 'team_lead',
+              child: DropdownButtonFormField<int?>(
+                initialValue: leadExists ? _teamLead : null,
+                isExpanded: true,
+                decoration: const InputDecoration(
+                  labelText: 'Team lead',
+                  border: OutlineInputBorder(),
+                  helperText: 'They get the team lead panel for this team',
                 ),
-                ...users.allUsers.map(
-                  (UserModel user) => DropdownMenuItem<int?>(
-                    value: user.id,
-                    child: Text(
-                      '${user.fullName} - ${UserRoles.label(user.role)}',
-                      overflow: TextOverflow.ellipsis,
+                items: <DropdownMenuItem<int?>>[
+                  const DropdownMenuItem<int?>(
+                    value: null,
+                    child: Text('No lead yet'),
+                  ),
+                  ...users.allUsers.map(
+                    (UserModel user) => DropdownMenuItem<int?>(
+                      value: user.id,
+                      child: Text(
+                        '${user.fullName} - ${UserRoles.label(user.role)}',
+                        overflow: TextOverflow.ellipsis,
+                      ),
                     ),
                   ),
-                ),
-              ],
-              onChanged: (int? value) => setState(() => _teamLead = value),
+                ],
+                onChanged: (int? value) => setState(() => _teamLead = value),
+              ),
             ),
             const SizedBox(height: 8),
             SwitchListTile(
@@ -445,35 +483,42 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
             children: <Widget>[
               if (_savedTeamId == null)
                 Expanded(
-                  child: OutlinedButton(
-                    onPressed:
-                        teams.isSaving ? null : () => _save(closeAfter: false),
-                    style: OutlinedButton.styleFrom(
-                      minimumSize: const Size.fromHeight(48),
+                  child: CoachTarget(
+                           name: 'team_save_and_members',
+                           child: OutlinedButton(
+                      onPressed:
+                          teams.isSaving ? null : () => _save(closeAfter: false),
+                      style: OutlinedButton.styleFrom(
+                        minimumSize: const Size.fromHeight(48),
+                      ),
+                      child: const Text('Save and add members'),
                     ),
-                    child: const Text('Save and add members'),
-                  ),
+                         ),
                 ),
               if (_savedTeamId == null) const SizedBox(width: 10),
               Expanded(
-                child: FilledButton.icon(
-                  onPressed: teams.isSaving ? null : () => _save(),
-                  icon: teams.isSaving
-                      ? const SizedBox(
-                          height: 16,
-                          width: 16,
-                          child: CircularProgressIndicator(strokeWidth: 2),
-                        )
-                      : const Icon(Icons.check),
-                  label: Text(_savedTeamId == null ? 'Create' : 'Save'),
-                  style: FilledButton.styleFrom(
-                    minimumSize: const Size.fromHeight(48),
+                child: CoachTarget(
+                         name: 'team_save',
+                         child: FilledButton.icon(
+                    onPressed: teams.isSaving ? null : () => _save(),
+                    icon: teams.isSaving
+                        ? const SizedBox(
+                            height: 16,
+                            width: 16,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          )
+                        : const Icon(Icons.check),
+                    label: Text(_savedTeamId == null ? 'Create' : 'Save'),
+                    style: FilledButton.styleFrom(
+                      minimumSize: const Size.fromHeight(48),
+                    ),
                   ),
-                ),
+                       ),
               ),
             ],
           ),
         ),
+      ),
       ),
     );
   }

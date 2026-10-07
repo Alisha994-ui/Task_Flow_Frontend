@@ -66,7 +66,9 @@ class _DashboardBody extends StatelessWidget {
           physics: const NeverScrollableScrollPhysics(),
           mainAxisSpacing: 12,
           crossAxisSpacing: 12,
-          childAspectRatio: 1.15,
+          // A single number and a label do not need a near-square tile -
+          // 1.15 left each card mostly empty space below the text.
+          childAspectRatio: 1.9,
           children: <Widget>[
             StatCard(
               label: 'Total users',

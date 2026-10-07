@@ -88,6 +88,17 @@ class UserRoles {
     viewer,
   ];
 
+  /// Roles that can actually be picked when creating or editing a user.
+  /// The server's own role choices do not include Viewer - offering it
+  /// here only produces "role: VIEWER is not a valid choice" on save,
+  /// so it is left out until the two sides agree on it.
+  static const List<String> assignable = <String>[
+    admin,
+    projectManager,
+    teamLead,
+    employee,
+  ];
+
   static String label(String value) => humanizeChoice(value);
 
   static Color color(String value) {

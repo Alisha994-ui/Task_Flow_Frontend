@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../core/coach/coach_target.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/project_constants.dart';
@@ -9,6 +10,7 @@ import '../../models/user_model.dart';
 import '../../providers/project_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../providers/user_provider.dart';
+import '../../widgets/admin/admin_widgets.dart';
 
 /// Create a project when [project] is null, otherwise edit it.
 class ProjectFormScreen extends StatefulWidget {
@@ -60,6 +62,38 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       context.read<UserProvider>().ensureLoaded();
       context.read<TeamProvider>().ensureLoaded();
     });
+
+    _initialStartDate = _startDate;
+    _initialEndDate = _endDate;
+    _initialPriority = _priority;
+    _initialStatus = _status;
+    _initialManagerId = _managerId;
+    _initialTeamId = _teamId;
+    _initialIsArchived = _isArchived;
+  }
+
+  // Snapshot of what the form looked like when it opened, compared
+  // against on Back so a clean form never triggers "Discard changes?".
+  late final DateTime? _initialStartDate;
+  late final DateTime? _initialEndDate;
+  late final String _initialPriority;
+  late final String _initialStatus;
+  late final int? _initialManagerId;
+  late final int? _initialTeamId;
+  late final bool _initialIsArchived;
+
+  bool get _isDirty {
+    final ProjectModel? project = widget.project;
+
+    return _nameController.text != (project?.name ?? '') ||
+        _descriptionController.text != (project?.description ?? '') ||
+        _startDate != _initialStartDate ||
+        _endDate != _initialEndDate ||
+        _priority != _initialPriority ||
+        _status != _initialStatus ||
+        _managerId != _initialManagerId ||
+        _teamId != _initialTeamId ||
+        _isArchived != _initialIsArchived;
   }
 
   @override
@@ -187,33 +221,42 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
     final UserProvider users = context.watch<UserProvider>();
     final TeamProvider teams = context.watch<TeamProvider>();
 
-    return Scaffold(
+    return DiscardGuard(
+      isDirty: () => _isDirty,
+      child: Scaffold(
       appBar: AppBar(
-        title: Text(widget.isEdit ? 'Edit project' : 'New project'),
+        leading: IconButton(
+        icon: const Icon(Icons.arrow_back),
+        onPressed: () => DiscardGuard.handleBack(context),
       ),
+      title: Text(widget.isEdit ? 'Edit project' : 'New project'),
+    ),
       body: Form(
         key: _formKey,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: <Widget>[
-            TextFormField(
-              controller: _nameController,
-              textCapitalization: TextCapitalization.sentences,
-              decoration: const InputDecoration(
-                labelText: 'Project name',
-                border: OutlineInputBorder(),
+            CoachTarget(
+              name: 'project_name',
+              child: TextFormField(
+                controller: _nameController,
+                textCapitalization: TextCapitalization.sentences,
+                decoration: const InputDecoration(
+                  labelText: 'Project name',
+                  border: OutlineInputBorder(),
+                ),
+                validator: (String? value) {
+                  if (value == null || value.trim().isEmpty) {
+                    return 'Give the project a name';
+                  }
+  
+                  if (value.trim().length < 3) {
+                    return 'Use at least 3 characters';
+                  }
+  
+                  return null;
+                },
               ),
-              validator: (String? value) {
-                if (value == null || value.trim().isEmpty) {
-                  return 'Give the project a name';
-                }
-
-                if (value.trim().length < 3) {
-                  return 'Use at least 3 characters';
-                }
-
-                return null;
-              },
             ),
             const SizedBox(height: 16),
             TextFormField(
@@ -352,6 +395,7 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
           ),
         ),
       ),
+      ),
     );
   }
 }
@@ -411,7 +455,12 @@ class _ManagerField extends StatelessWidget {
       return const _LoadingField(label: 'Project manager');
     }
 
-    final List<UserModel> list = users.allUsers;
+    // Only people who can actually own a project - an Employee or Team
+    // Lead picked here would have no manager-level access to it.
+    final List<UserModel> list = users.allUsers
+        .where((UserModel u) =>
+            u.role == UserRoles.projectManager || u.isAdmin)
+        .toList();
     final bool valueExists = list.any((UserModel u) => u.id == value);
 
     return DropdownButtonFormField<int>(
@@ -421,7 +470,7 @@ class _ManagerField extends StatelessWidget {
         labelText: 'Project manager',
         border: const OutlineInputBorder(),
         helperText: value != null && !valueExists
-            ? 'Current manager (#$value) is not in the loaded list'
+            ? 'Current manager (#$value) is not a Project manager or Admin'
             : null,
       ),
       items: list
@@ -459,7 +508,14 @@ class _TeamField extends StatelessWidget {
       return const _LoadingField(label: 'Team');
     }
 
-    final List<TeamModel> list = teams.allTeams;
+    // An inactive or empty team should not be handed a new project - it
+    // was deactivated, or has nobody in it to do the work. The one
+    // exception is the team this project is already on; it still has to
+    // show so editing the rest of the form does not silently clear it.
+    final List<TeamModel> list = teams.allTeams
+        .where((TeamModel t) =>
+            (t.isActive && t.members.isNotEmpty) || t.id == value)
+        .toList();
     final bool valueExists = list.any((TeamModel t) => t.id == value);
 
     return DropdownButtonFormField<int>(

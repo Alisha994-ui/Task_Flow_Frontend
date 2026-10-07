@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/project_constants.dart';
@@ -149,6 +150,54 @@ class TaskProvider extends ChangeNotifier {
     }
   }
 
+  /// The board's source list: every filter except status, because the
+  /// columns are the statuses.
+  List<TaskModel> get tasksForBoard {
+    final String query = _search.trim().toLowerCase();
+
+    final List<TaskModel> filtered = _all.where((TaskModel t) {
+      if (_priorityFilter != kFilterAll && t.priority != _priorityFilter) {
+        return false;
+      }
+
+      if (_projectFilter != null && t.project != _projectFilter) {
+        return false;
+      }
+
+      if (_assigneeFilter != null && t.assignee != _assigneeFilter) {
+        return false;
+      }
+
+      if (_overdueOnly && !t.isOverdue) {
+        return false;
+      }
+
+      if (query.isEmpty) {
+        return true;
+      }
+
+      return t.title.toLowerCase().contains(query) ||
+          t.description.toLowerCase().contains(query);
+    }).toList();
+
+    filtered.sort(_byUrgency);
+
+    return filtered;
+  }
+
+  /// Those tasks split into columns, one per status.
+  Map<String, List<TaskModel>> get board {
+    final Map<String, List<TaskModel>> columns = <String, List<TaskModel>>{
+      for (final String status in TaskStatus.all) status: <TaskModel>[],
+    };
+
+    for (final TaskModel task in tasksForBoard) {
+      columns[task.status]?.add(task);
+    }
+
+    return columns;
+  }
+
   TaskModel? byId(int id) {
     for (final TaskModel task in _all) {
       if (task.id == id) {
@@ -277,7 +326,7 @@ class TaskProvider extends ChangeNotifier {
       _all = await TaskService.getTasks();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -364,7 +413,7 @@ class TaskProvider extends ChangeNotifier {
 
       return created;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return null;
     } finally {
@@ -388,7 +437,7 @@ class TaskProvider extends ChangeNotifier {
 
       return updated;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return null;
     } finally {
@@ -416,7 +465,7 @@ class TaskProvider extends ChangeNotifier {
 
         return true;
       } catch (e) {
-        _error = e.toString();
+        _error = friendlyError(e);
 
         return false;
       } finally {
@@ -453,7 +502,7 @@ class TaskProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {

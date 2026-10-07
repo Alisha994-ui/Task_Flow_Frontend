@@ -251,7 +251,8 @@ class _TeamLeadMemberDetailScreenState
                     onStatusTap: () => TaskActions.changeStatus(context, task),
                     onAssignTap: () => TaskActions.reassign(context, task),
                     onEdit: () => TaskActions.edit(context, task),
-                    onDelete: () => TaskActions.delete(context, task),
+                    // A Team Lead edits and reassigns but never gets a
+                    // permanent Delete entry - see TaskActions.delete.
                   ),
                 ),
               ),

@@ -1,8 +1,11 @@
 import 'package:flutter/material.dart';
+import '../../core/coach/coach_target.dart';
 import 'package:provider/provider.dart';
+import '../../screens/assistant/assistant_panel.dart';
+
+import '../../core/utils/auto_refresh.dart';
 
 import '../../models/project_model.dart';
-import '../../models/team_model.dart';
 import '../../providers/manager_provider.dart';
 import '../../providers/project_provider.dart';
 import '../../providers/task_provider.dart';
@@ -11,6 +14,7 @@ import '../../providers/time_log_provider.dart';
 import '../../providers/user_provider.dart';
 import 'task_actions.dart';
 import '../../providers/notification_provider.dart';
+import '../../widgets/admin/admin_widgets.dart';
 import '../../widgets/notification_bell.dart';
 import '../../screens/profile/profile_screen.dart';
 import 'tabs/manager_calendar_tab.dart';
@@ -51,6 +55,15 @@ class ManagerPanelArgs {
 class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
   int _index = 0;
 
+  /// Pulls fresh data on a timer and whenever the app comes
+  /// back to the front, so nobody has to press anything.
+  late final AutoRefresher _auto;
+
+  /// The assistant lives in this scaffold's end drawer, so it can
+  /// switch tabs directly rather than pushing a page on top.
+  final GlobalKey<ScaffoldState> _scaffoldKey =
+      GlobalKey<ScaffoldState>();
+
   static const List<String> _titles = <String>[
     'Dashboard',
     'My projects',
@@ -62,6 +75,8 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
   @override
   void initState() {
     super.initState();
+
+    _auto = AutoRefresher(onRefresh: _loadAll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
@@ -79,6 +94,8 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
 
       await _loadAll();
 
+      _auto.start();
+
       if (!mounted) {
         return;
       }
@@ -95,6 +112,12 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _auto.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAll() async {
@@ -118,16 +141,9 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
   /// Projects this manager may file a task against.
   List<ProjectModel> _myProjects() {
     final ManagerProvider manager = context.read<ManagerProvider>();
-    final Set<int> ledTeamIds = context
-        .read<TeamProvider>()
-        .allTeams
-        .where((TeamModel t) => t.teamLead == manager.managerId)
-        .map((TeamModel t) => t.id)
-        .toSet();
 
     return manager.myProjects(
       context.read<ProjectProvider>().allProjects,
-      ledTeamIds: ledTeamIds,
     );
   }
 
@@ -138,9 +154,25 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      endDrawer: AssistantPanel(
+        destinations: const <String, int>{
+            'dashboard': 0,
+            'projects': 1,
+            'tasks': 2,
+            'calendar': 3,
+            'more': 4,
+        },
+        onGoTo: (int index) => setState(() => _index = index),
+      ),
       appBar: AppBar(
         title: Text(_titles[_index]),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Assistant',
+            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+            icon: const Icon(Icons.auto_awesome),
+          ),
           const NotificationBell(),
           IconButton(
             tooltip: 'Profile',
@@ -151,34 +183,39 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
             ),
             icon: const Icon(Icons.account_circle_outlined),
           ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _loadAll,
-            icon: const Icon(Icons.refresh),
-          ),
         ],
       ),
-      body: IndexedStack(
-        index: _index,
+      body: Column(
         children: <Widget>[
-          ManagerDashboardTab(
-            onSeeAllProjects: _goToProjects,
-            onSeeAllTasks: _goToTasks,
+          const OfflineBanner(),
+          Expanded(
+            child: IndexedStack(
+              index: _index,
+              children: <Widget>[
+                ManagerDashboardTab(
+                  onSeeAllProjects: _goToProjects,
+                  onSeeAllTasks: _goToTasks,
+                ),
+                const ManagerProjectsTab(),
+                const ManagerTasksTab(),
+                const ManagerCalendarTab(),
+                const ManagerMoreTab(),
+              ],
+            ),
           ),
-          const ManagerProjectsTab(),
-          const ManagerTasksTab(),
-          const ManagerCalendarTab(),
-          const ManagerMoreTab(),
         ],
       ),
       floatingActionButton: _index == 2 || _index == 3
-          ? FloatingActionButton.extended(
-              onPressed: () => TaskActions.create(
-                context,
-                selectableProjects: _myProjects(),
+          ? CoachTarget(
+              name: 'tasks_fab',
+              child: FloatingActionButton.extended(
+                onPressed: () => TaskActions.create(
+                  context,
+                  selectableProjects: _myProjects(),
+                ),
+                icon: const Icon(Icons.add),
+                label: const Text('New task'),
               ),
-              icon: const Icon(Icons.add),
-              label: const Text('New task'),
             )
           : null,
       bottomNavigationBar: NavigationBar(

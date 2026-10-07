@@ -96,7 +96,8 @@ class TaskTile extends StatelessWidget {
                     if (showProject) ...<Widget>[
                       const SizedBox(height: 2),
                       Text(
-                        projects.byId(task.project)?.name ??
+                        task.projectName ??
+                            projects.byId(task.project)?.name ??
                             'Project #${task.project}',
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -122,7 +123,7 @@ class TaskTile extends StatelessWidget {
                         ),
                         if (task.dueDate != null)
                           LabelChip(
-                            text: dueLabel(task.dueDate),
+                            text: dueLabel(task.dueDate, closed: task.isCompleted),
                             color: task.isOverdue
                                 ? const Color(0xFFDC2626)
                                 : const Color(0xFF6B7280),
@@ -187,7 +188,10 @@ class TaskTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (onEdit != null || onDelete != null || onAssignTap != null)
+              if (onEdit != null ||
+                  onDelete != null ||
+                  onAssignTap != null ||
+                  onStatusTap != null)
                 PopupMenuButton<String>(
                   tooltip: 'Task actions',
                   onSelected: (String action) {
@@ -206,50 +210,58 @@ class TaskTile extends StatelessWidget {
                         break;
                     }
                   },
+                  // Only offer actions this caller actually wired up - a
+                  // role with no onDelete must not even see a Delete entry
+                  // it can silently tap with nothing happening.
                   itemBuilder: (_) => <PopupMenuEntry<String>>[
-                    const PopupMenuItem<String>(
-                      value: 'status',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.swap_horiz),
-                        title: Text('Change status'),
-                      ),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: 'assign',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.person_add_alt),
-                        title: Text('Reassign'),
-                      ),
-                    ),
-                    const PopupMenuItem<String>(
-                      value: 'edit',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(Icons.edit_outlined),
-                        title: Text('Edit'),
-                      ),
-                    ),
-                    const PopupMenuDivider(),
-                    PopupMenuItem<String>(
-                      value: 'delete',
-                      child: ListTile(
-                        dense: true,
-                        contentPadding: EdgeInsets.zero,
-                        leading: Icon(
-                          Icons.delete_outline,
-                          color: theme.colorScheme.error,
-                        ),
-                        title: Text(
-                          'Delete',
-                          style: TextStyle(color: theme.colorScheme.error),
+                    if (onStatusTap != null)
+                      const PopupMenuItem<String>(
+                        value: 'status',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.swap_horiz),
+                          title: Text('Change status'),
                         ),
                       ),
-                    ),
+                    if (onAssignTap != null)
+                      const PopupMenuItem<String>(
+                        value: 'assign',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.person_add_alt),
+                          title: Text('Reassign'),
+                        ),
+                      ),
+                    if (onEdit != null)
+                      const PopupMenuItem<String>(
+                        value: 'edit',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(Icons.edit_outlined),
+                          title: Text('Edit'),
+                        ),
+                      ),
+                    if (onDelete != null) ...<PopupMenuEntry<String>>[
+                      const PopupMenuDivider(),
+                      PopupMenuItem<String>(
+                        value: 'delete',
+                        child: ListTile(
+                          dense: true,
+                          contentPadding: EdgeInsets.zero,
+                          leading: Icon(
+                            Icons.delete_outline,
+                            color: theme.colorScheme.error,
+                          ),
+                          title: Text(
+                            'Delete',
+                            style: TextStyle(color: theme.colorScheme.error),
+                          ),
+                        ),
+                      ),
+                    ],
                   ],
                 ),
             ],
@@ -309,6 +321,11 @@ Future<int?> pickAssignee(
   BuildContext context, {
   required List<UserModel> candidates,
   int? current,
+  // Shown above the list only when the caller had to widen it past the
+  // project's own team (e.g. the team has nobody in it yet) - otherwise
+  // "everyone" silently appearing here reads as the picker ignoring the
+  // team rather than a deliberate fallback.
+  String? scopeNote,
 }) {
   return showModalBottomSheet<int>(
     context: context,
@@ -334,6 +351,19 @@ Future<int?> pickAssignee(
                   ),
                 ),
               ),
+              if (scopeNote != null)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(20, 0, 20, 8),
+                  child: Align(
+                    alignment: Alignment.centerLeft,
+                    child: Text(
+                      scopeNote,
+                      style: theme.textTheme.bodySmall?.copyWith(
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                  ),
+                ),
               Expanded(
                 child: ListView(
                   children: <Widget>[

@@ -89,7 +89,7 @@ class _AdminTeamsTabState extends State<AdminTeamsTab> {
               onRefresh: provider.refresh,
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
-                padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),
+                padding: const EdgeInsets.fromLTRB(16, 4, 16, 120),
                 itemCount: teams.length,
                 separatorBuilder: (_, _) => const SizedBox(height: 8),
                 itemBuilder: (BuildContext context, int index) {
@@ -134,6 +134,42 @@ class _TeamCard extends StatelessWidget {
   }
 
   Future<void> _toggleActive(BuildContext context) async {
+    // Deactivating drops the team out of every "assign to a team"
+    // picker and off its members' panels - a mis-tap deserves a chance
+    // to back out. Re-activating is harmless, so that alone stays a
+    // single tap.
+    if (team.isActive) {
+      final bool? confirmed = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('Deactivate this team?'),
+            content: Text(
+              '${team.name} will no longer be offered for new projects '
+              'until this is turned back on.',
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () => Navigator.of(dialogContext).pop(false),
+                child: const Text('Cancel'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor: Theme.of(dialogContext).colorScheme.error,
+                ),
+                onPressed: () => Navigator.of(dialogContext).pop(true),
+                child: const Text('Deactivate'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (confirmed != true || !context.mounted) {
+        return;
+      }
+    }
+
     final TeamProvider teams = context.read<TeamProvider>();
     final bool ok = await teams.setActive(team.id, !team.isActive);
 

@@ -1,8 +1,22 @@
+import 'dart:async';
 import 'dart:convert';
+import 'dart:io';
 
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
 import '../storage/secure_storage.dart';
+
+class NetworkException implements Exception {
+  const NetworkException(
+    this.message,
+  );
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
 
 class ApiClient {
   ApiClient._();
@@ -14,8 +28,13 @@ class ApiClient {
   static const String baseUrl =
       'http://192.168.100.4:8000/api';
 
-  static final SecureStorage _storage =
-      SecureStorage();
+  static const String refreshEndpoint = '/auth/refresh/';
+
+  static final SecureStorage _storage = SecureStorage();
+
+  static Future<bool>? _refreshing;
+
+  static bool sessionExpired = false;
 
   // ============================================================
   // GET
@@ -25,9 +44,12 @@ class ApiClient {
     String endpoint, {
     bool authenticated = true,
   }) async {
-    final response = await http.get(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: await _headers(authenticated),
+    final response = await _send(
+      (headers) => http.get(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: headers,
+      ),
+      authenticated,
     );
 
     return _handleResponse(response);
@@ -42,10 +64,13 @@ class ApiClient {
     Map<String, dynamic>? body,
     bool authenticated = true,
   }) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: await _headers(authenticated),
-      body: body == null ? null : jsonEncode(body),
+    final response = await _send(
+      (headers) => http.post(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: headers,
+        body: body == null ? null : jsonEncode(body),
+      ),
+      authenticated,
     );
 
     return _handleResponse(response);
@@ -60,10 +85,13 @@ class ApiClient {
     Map<String, dynamic>? body,
     bool authenticated = true,
   }) async {
-    final response = await http.patch(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: await _headers(authenticated),
-      body: body == null ? null : jsonEncode(body),
+    final response = await _send(
+      (headers) => http.patch(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: headers,
+        body: body == null ? null : jsonEncode(body),
+      ),
+      authenticated,
     );
 
     return _handleResponse(response);
@@ -77,9 +105,12 @@ class ApiClient {
     String endpoint, {
     bool authenticated = true,
   }) async {
-    final response = await http.delete(
-      Uri.parse('$baseUrl$endpoint'),
-      headers: await _headers(authenticated),
+    final response = await _send(
+      (headers) => http.delete(
+        Uri.parse('$baseUrl$endpoint'),
+        headers: headers,
+      ),
+      authenticated,
     );
 
     if (response.statusCode >= 200 &&
@@ -111,7 +142,7 @@ class ApiClient {
   }
 
   // ============================================================
-  // MULTIPART POST (file upload)
+  // MULTIPART POST
   // ============================================================
 
   static Future<Map<String, dynamic>> postMultipart(
@@ -121,66 +152,211 @@ class ApiClient {
     Map<String, String> fields = const <String, String>{},
     bool authenticated = true,
   }) async {
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl$endpoint'),
+    Future<http.Response> attempt(
+      Map<String, String> headers,
+    ) async {
+      final request = http.MultipartRequest(
+        'POST',
+        Uri.parse('$baseUrl$endpoint'),
+      );
+
+      final multipartHeaders = Map<String, String>.from(headers)
+        ..remove('Content-Type');
+
+      request.headers.addAll(multipartHeaders);
+      request.fields.addAll(fields);
+
+      request.files.add(
+        await http.MultipartFile.fromPath(
+          fileField,
+          filePath,
+        ),
+      );
+
+      final streamed = await request.send();
+
+      return http.Response.fromStream(streamed);
+    }
+
+    final response = await _send(
+      attempt,
+      authenticated,
     );
-
-    final headers = await _headers(authenticated);
-
-    // MultipartRequest writes its own Content-Type with a boundary,
-    // so the JSON one has to go.
-    headers.remove('Content-Type');
-    request.headers.addAll(headers);
-
-    request.fields.addAll(fields);
-
-    request.files.add(
-      await http.MultipartFile.fromPath(
-        fileField,
-        filePath,
-      ),
-    );
-
-    final streamed = await request.send();
-
-    final response =
-        await http.Response.fromStream(streamed);
 
     return _handleResponse(response);
   }
 
   // ============================================================
-  // MEDIA URLS
+  // SENDING, WITH ONE SILENT RETRY
   // ============================================================
 
-  /// The server without the trailing /api, so uploaded files resolve.
-  ///   baseUrl     http://192.168.100.4:8000/api
-  ///   serverRoot  http://192.168.100.4:8000
-  static String get serverRoot {
-    if (baseUrl.endsWith('/api')) {
-      return baseUrl.substring(
-        0,
-        baseUrl.length - 4,
+  static Future<http.Response> _send(
+    Future<http.Response> Function(
+      Map<String, String> headers,
+    ) attempt,
+    bool authenticated,
+  ) async {
+    final http.Response response;
+
+    try {
+      response = await attempt(
+        await _headers(authenticated),
+      );
+    } catch (e) {
+      throw _friendlyNetworkError(e);
+    }
+
+    if (response.statusCode != 401 || !authenticated) {
+      return response;
+    }
+
+    final bool refreshed = await _refreshAccessToken();
+
+    if (!refreshed) {
+      // Refresh failed because the network disappeared.
+      // The 401 must NOT be treated as an invalid session in
+      // that case.
+      if (!sessionExpired) {
+        throw const NetworkException(
+          "Can't reach the server. Check your connection and try again.",
+        );
+      }
+
+      return response;
+    }
+
+    try {
+      return await attempt(
+        await _headers(authenticated),
+      );
+    } catch (e) {
+      throw _friendlyNetworkError(e);
+    }
+  }
+
+  // ============================================================
+  // NETWORK ERROR
+  // ============================================================
+
+  static Exception _friendlyNetworkError(Object error) {
+    debugPrint('API NETWORK ERROR: $error');
+
+    if (error is NetworkException) {
+      return error;
+    }
+
+    if (error is SocketException ||
+        error is http.ClientException ||
+        error is HandshakeException ||
+        error is TimeoutException) {
+      return NetworkException(
+        "Network error: $error",
       );
     }
 
-    return baseUrl;
+    return error is Exception
+        ? error
+        : Exception(error.toString());
   }
 
-  /// Django may return a full URL or a path such as
-  /// /media/task_attachments/spec.pdf - this makes both openable.
-  static String absoluteUrl(String pathOrUrl) {
-    if (pathOrUrl.startsWith('http://') ||
-        pathOrUrl.startsWith('https://')) {
-      return pathOrUrl;
+  // ============================================================
+  // REFRESH ACCESS TOKEN
+  // ============================================================
+
+  static Future<bool> _refreshAccessToken() async {
+    final inFlight = _refreshing;
+
+    if (inFlight != null) {
+      return inFlight;
     }
 
-    if (pathOrUrl.startsWith('/')) {
-      return '$serverRoot$pathOrUrl';
-    }
+    final completer = Completer<bool>();
+    _refreshing = completer.future;
 
-    return '$serverRoot/$pathOrUrl';
+    try {
+      final refreshToken = await _storage.getRefreshToken();
+
+      if (refreshToken == null || refreshToken.isEmpty) {
+        sessionExpired = true;
+        completer.complete(false);
+
+        return false;
+      }
+
+      final http.Response response;
+
+      try {
+        response = await http
+            .post(
+              Uri.parse('$baseUrl$refreshEndpoint'),
+              headers: const {
+                'Content-Type': 'application/json',
+                'Accept': 'application/json',
+              },
+              body: jsonEncode({
+                'refresh': refreshToken,
+              }),
+            )
+            .timeout(const Duration(seconds: 10));
+      } catch (e) {
+        // IMPORTANT:
+        // Network failure is NOT token expiration.
+        sessionExpired = false;
+        completer.complete(false);
+
+        return false;
+      }
+
+      if (response.statusCode < 200 ||
+          response.statusCode >= 300) {
+        await _storage.clearTokens();
+
+        sessionExpired = true;
+        completer.complete(false);
+
+        return false;
+      }
+
+      final decoded = jsonDecode(response.body);
+
+      if (decoded is! Map<String, dynamic>) {
+        sessionExpired = true;
+        completer.complete(false);
+
+        return false;
+      }
+
+      final access = decoded['access']?.toString();
+
+      if (access == null || access.isEmpty) {
+        sessionExpired = true;
+        completer.complete(false);
+
+        return false;
+      }
+
+      final newRefresh =
+          decoded['refresh']?.toString() ?? refreshToken;
+
+      await _storage.saveTokens(
+        accessToken: access,
+        refreshToken: newRefresh,
+      );
+
+      sessionExpired = false;
+      completer.complete(true);
+
+      return true;
+    } catch (_) {
+      // Unexpected refresh failure must not automatically
+      // destroy the saved session.
+      sessionExpired = false;
+      completer.complete(false);
+
+      return false;
+    } finally {
+      _refreshing = null;
+    }
   }
 
   // ============================================================
@@ -196,16 +372,42 @@ class ApiClient {
     };
 
     if (authenticated) {
-      final token =
-          await _storage.getAccessToken();
+      final token = await _storage.getAccessToken();
 
       if (token != null && token.isNotEmpty) {
-        headers['Authorization'] =
-            'Bearer $token';
+        headers['Authorization'] = 'Bearer $token';
       }
     }
 
     return headers;
+  }
+
+  // ============================================================
+  // MEDIA URLS
+  // ============================================================
+
+  static String get serverRoot {
+    if (baseUrl.endsWith('/api')) {
+      return baseUrl.substring(
+        0,
+        baseUrl.length - 4,
+      );
+    }
+
+    return baseUrl;
+  }
+
+  static String absoluteUrl(String pathOrUrl) {
+    if (pathOrUrl.startsWith('http://') ||
+        pathOrUrl.startsWith('https://')) {
+      return pathOrUrl;
+    }
+
+    if (pathOrUrl.startsWith('/')) {
+      return '$serverRoot$pathOrUrl';
+    }
+
+    return '$serverRoot/$pathOrUrl';
   }
 
   // ============================================================
@@ -229,9 +431,7 @@ class ApiClient {
       };
     }
 
-    // ----------------------------------------------------------
     // SUCCESS
-    // ----------------------------------------------------------
 
     if (response.statusCode >= 200 &&
         response.statusCode < 300) {
@@ -244,9 +444,12 @@ class ApiClient {
       };
     }
 
-    // ----------------------------------------------------------
-    // ERROR
-    // ----------------------------------------------------------
+    // 401 means the server actively rejected the session.
+    if (response.statusCode == 401) {
+      throw Exception(
+        'Your session has ended. Please sign in again.',
+      );
+    }
 
     if (decoded is Map<String, dynamic>) {
       throw Exception(

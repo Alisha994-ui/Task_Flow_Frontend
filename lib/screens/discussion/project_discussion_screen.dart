@@ -3,6 +3,8 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 
+import '../../core/utils/auto_refresh.dart';
+
 import '../../models/project_message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/discussion_provider.dart';
@@ -58,8 +60,23 @@ class _DiscussionViewState extends State<_DiscussionView> {
 
   PlatformFile? _pending;
 
+  /// A conversation goes stale faster than a dashboard, so it polls
+  /// more often.
+  late final AutoRefresher _auto;
+
+  @override
+  void initState() {
+    super.initState();
+
+    _auto = AutoRefresher(
+      onRefresh: () => context.read<DiscussionProvider>().refresh(),
+      interval: const Duration(seconds: 15),
+    )..start();
+  }
+
   @override
   void dispose() {
+    _auto.dispose();
     _controller.dispose();
     _scroll.dispose();
     super.dispose();
@@ -280,13 +297,6 @@ class _DiscussionViewState extends State<_DiscussionView> {
             ),
           ],
         ),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: discussion.refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
       ),
       body: body,
     );

@@ -10,6 +10,7 @@ class NotificationType {
   static const String overdue = 'OVERDUE';
   static const String comment = 'COMMENT';
   static const String mention = 'MENTION';
+  static const String taskUrgent = 'TASK_URGENT';
 
   static const List<String> all = <String>[
     taskAssigned,
@@ -18,6 +19,7 @@ class NotificationType {
     overdue,
     comment,
     mention,
+    taskUrgent,
   ];
 
   static String label(String value) {
@@ -34,6 +36,8 @@ class NotificationType {
         return 'Comment';
       case mention:
         return 'Mention';
+      case taskUrgent:
+        return 'Marked urgent';
       default:
         return value;
     }
@@ -53,6 +57,8 @@ class NotificationType {
         return Icons.chat_bubble_outline;
       case mention:
         return Icons.alternate_email;
+      case taskUrgent:
+        return Icons.priority_high_rounded;
       default:
         return Icons.notifications_none;
     }
@@ -72,6 +78,8 @@ class NotificationType {
         return const Color(0xFF7C3AED);
       case mention:
         return const Color(0xFF059669);
+      case taskUrgent:
+        return const Color(0xFFDC2626);
       default:
         return const Color(0xFF6B7280);
     }

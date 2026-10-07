@@ -114,7 +114,11 @@ class ManagerProjectCard extends StatelessWidget {
                   ),
                   const SizedBox(width: 5),
                   Text(
-                    dueLabel(project.endDate),
+                    dueLabel(
+                      project.endDate,
+                      closed: project.status == ProjectStatus.completed ||
+                          project.status == ProjectStatus.cancelled,
+                    ),
                     style: theme.textTheme.bodySmall?.copyWith(
                       color: overdue
                           ? theme.colorScheme.error

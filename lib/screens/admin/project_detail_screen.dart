@@ -165,11 +165,6 @@ class _ProjectDetailView extends StatelessWidget {
                 onPressed: () => _edit(context, project),
                 icon: const Icon(Icons.edit_outlined),
               ),
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed: detail.refresh,
-              icon: const Icon(Icons.refresh),
-            ),
           ],
           bottom: const TabBar(
             tabs: <Widget>[

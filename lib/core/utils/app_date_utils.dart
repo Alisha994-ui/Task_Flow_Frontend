@@ -106,11 +106,23 @@ int? daysUntil(DateTime? endDate) {
 
 /// Short human label for a due date: `Due today`, `3 days left`,
 /// `2 days overdue`.
-String dueLabel(DateTime? endDate, {String fallback = 'No due date'}) {
+///
+/// Pass [closed] as true (a completed/cancelled task or project) so a
+/// finished item never shows an urgency badge - it reports how it
+/// finished instead of pretending it is still late.
+String dueLabel(
+  DateTime? endDate, {
+  String fallback = 'No due date',
+  bool closed = false,
+}) {
   final int? days = daysUntil(endDate);
 
   if (days == null) {
     return fallback;
+  }
+
+  if (closed) {
+    return days < 0 ? 'Completed late' : 'Completed on time';
   }
 
   if (days == 0) {

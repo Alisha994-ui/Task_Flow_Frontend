@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/project_message_model.dart';
@@ -40,7 +41,7 @@ class DiscussionProvider extends ChangeNotifier {
       _messages = await DiscussionService.getMessages(projectId);
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -75,7 +76,7 @@ class DiscussionProvider extends ChangeNotifier {
 
       return null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return 'Could not send that.';
     } finally {
@@ -94,7 +95,7 @@ class DiscussionProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
       notifyListeners();
 
       return false;

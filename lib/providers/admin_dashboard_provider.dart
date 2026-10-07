@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/admin_dashboard_model.dart';
@@ -43,7 +44,7 @@ class AdminDashboardProvider extends ChangeNotifier {
       _dashboard = await AdminDashboardService.getDashboard();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
     } finally {
       _isLoading = false;
       notifyListeners();

@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/project_member_model.dart';
@@ -46,7 +47,7 @@ class ProjectDetailProvider extends ChangeNotifier {
       _members = await ProjectService.getProjectMembers(projectId);
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
     }
 
     // The progress endpoint is optional - a failure here should not blank
@@ -78,7 +79,7 @@ class ProjectDetailProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {
@@ -100,7 +101,7 @@ class ProjectDetailProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {

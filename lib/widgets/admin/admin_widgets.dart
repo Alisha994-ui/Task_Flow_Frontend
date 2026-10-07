@@ -1,7 +1,192 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import '../../providers/auth_provider.dart';
 
 /// Shared building blocks. Everything here follows AppTheme, so changing
 /// the palette there changes these too.
+
+/// Wraps a form screen so the back gesture/button behaves the same way
+/// everywhere: with the keyboard open, the first Back only dismisses it
+/// (never the screen and the keyboard at once); with it closed, Back
+/// leaves immediately on a clean form or asks "Discard changes?" first
+/// on a dirty one - instead of silently losing everything typed.
+class DiscardGuard extends StatelessWidget {
+  const DiscardGuard({
+    super.key,
+    required this.isDirty,
+    required this.child,
+  });
+
+  final bool Function() isDirty;
+  final Widget child;
+
+  static Future<void> handleBack(BuildContext context) async {
+    final _DiscardGuardScope? scope =
+        context.dependOnInheritedWidgetOfExactType<_DiscardGuardScope>();
+
+    if (scope == null) {
+      Navigator.of(context).pop();
+      return;
+    }
+
+    await scope.onBack();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    Future<void> onBack() async {
+      final bool hadFocus =
+          FocusManager.instance.primaryFocus?.hasFocus ?? false;
+
+      if (hadFocus) {
+        FocusScope.of(context).unfocus();
+        return;
+      }
+
+      if (!isDirty()) {
+        if (context.mounted) {
+          Navigator.of(context).pop();
+        }
+        return;
+      }
+
+      final bool? discard = await showDialog<bool>(
+        context: context,
+        builder: (BuildContext dialogContext) {
+          return AlertDialog(
+            title: const Text('Discard changes?'),
+            content: const Text(
+              "What you've entered on this screen will be lost.",
+            ),
+            actions: <Widget>[
+              TextButton(
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(false);
+                },
+                child: const Text('Keep editing'),
+              ),
+              FilledButton(
+                style: FilledButton.styleFrom(
+                  backgroundColor:
+                      Theme.of(dialogContext).colorScheme.error,
+                ),
+                onPressed: () {
+                  Navigator.of(dialogContext).pop(true);
+                },
+                child: const Text('Discard'),
+              ),
+            ],
+          );
+        },
+      );
+
+      if (discard == true && context.mounted) {
+        Navigator.of(context).pop();
+      }
+    }
+
+    return _DiscardGuardScope(
+      onBack: onBack,
+      child: PopScope(
+        canPop: false,
+        onPopInvokedWithResult: (bool didPop, Object? result) {
+          if (didPop) {
+            return;
+          }
+
+          onBack();
+        },
+        child: child,
+      ),
+    );
+  }
+}
+
+class _DiscardGuardScope extends InheritedWidget {
+  const _DiscardGuardScope({
+    required this.onBack,
+    required super.child,
+  });
+
+  final Future<void> Function() onBack;
+
+  @override
+  bool updateShouldNotify(_DiscardGuardScope oldWidget) {
+    return false;
+  }
+}
+/// Thin strip shown at the top of a panel when the app started up with
+/// no connection and is showing the last-known signed-in profile (see
+/// `AuthProvider.restoreSession`). Collapses to nothing once a request
+/// succeeds and `restoredFromCache` clears, so it never lingers once the
+/// connection is actually back.
+class OfflineBanner extends StatelessWidget {
+  const OfflineBanner({super.key});
+
+  @override
+  Widget build(BuildContext context) {
+    final bool offline = context.watch<AuthProvider>().restoredFromCache;
+
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 200),
+      child: !offline
+          ? const SizedBox.shrink()
+          : Container(
+              key: const ValueKey<bool>(true),
+              width: double.infinity,
+              color: const Color(0xFFD97706),
+              padding: const EdgeInsets.symmetric(
+                horizontal: 16,
+                vertical: 8,
+              ),
+              child: const Row(
+                children: <Widget>[
+                  Icon(Icons.cloud_off, size: 16, color: Colors.white),
+                  SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Offline - showing data from your last session.',
+                      style: TextStyle(color: Colors.white, fontSize: 12),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+    );
+  }
+}
+
+/// Wrap a provider's `refresh`/`load` call with this for pull-to-refresh.
+///
+/// A provider keeps old data on screen when a refresh fails (so a flaky
+/// connection does not blank out what somebody was looking at), which
+/// means its own `error` getter is deliberately not wired into the main
+/// error view while there is cached data to show. Without this, that
+/// silence reads as "nothing happened" - the spinner stops and nothing
+/// else occurs, online or offline. This surfaces the same `error` as a
+/// snackbar so a failed refresh is never silent.
+Future<void> refreshWithFeedback(
+  BuildContext context,
+  Future<void> Function() refresh,
+  String? Function() errorOf,
+) async {
+  await refresh();
+
+  if (!context.mounted) {
+    return;
+  }
+
+  final String? error = errorOf();
+
+  if (error == null) {
+    return;
+  }
+
+  ScaffoldMessenger.of(context)
+    ..hideCurrentSnackBar()
+    ..showSnackBar(SnackBar(content: Text(error)));
+}
 
 /// Single metric tile. The number carries the card - label stays quiet.
 class StatCard extends StatelessWidget {
@@ -40,7 +225,7 @@ class StatCard extends StatelessWidget {
                   const Spacer(),
                 ],
               ),
-              const SizedBox(height: 14),
+              const SizedBox(height: 8),
               Text(
                 '$value',
                 style: theme.textTheme.headlineSmall?.copyWith(
@@ -353,8 +538,7 @@ class GreetingHeader extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
-    final String firstName =
-        name.trim().isEmpty ? '' : name.trim().split(' ').first;
+    final String displayName = name.trim();
 
     return Row(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -371,7 +555,14 @@ class GreetingHeader extends StatelessWidget {
               ),
               const SizedBox(height: 2),
               Text(
-                firstName.isEmpty ? 'Welcome back' : firstName,
+                // The full name, not just its first word: for an account
+                // whose display name happens to be two title-case words
+                // (seed/demo data such as "Project Manager"), taking the
+                // first word alone used to read as a wrong, truncated
+                // greeting ("Good afternoon, Project").
+                displayName.isEmpty ? 'Welcome back' : displayName,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: theme.textTheme.headlineLarge,
               ),
               const SizedBox(height: 6),

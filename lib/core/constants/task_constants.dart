@@ -109,6 +109,7 @@ class ActivityAction {
   static const String commentAdded = 'COMMENT_ADDED';
   static const String attachmentAdded = 'ATTACHMENT_ADDED';
   static const String timeLogged = 'TIME_LOGGED';
+  static const String priorityChanged = 'PRIORITY_CHANGED';
 
   static String label(String value) => humanizeChoice(value);
 
@@ -126,6 +127,8 @@ class ActivityAction {
         return Icons.attach_file;
       case timeLogged:
         return Icons.timer_outlined;
+      case priorityChanged:
+        return Icons.priority_high_rounded;
       default:
         return Icons.bolt_outlined;
     }
@@ -145,6 +148,8 @@ class ActivityAction {
         return const Color(0xFF6B7280);
       case timeLogged:
         return const Color(0xFF059669);
+      case priorityChanged:
+        return const Color(0xFFDC2626);
       default:
         return const Color(0xFF6B7280);
     }

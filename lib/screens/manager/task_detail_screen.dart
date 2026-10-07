@@ -20,6 +20,7 @@ import '../../providers/time_log_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/admin/admin_widgets.dart';
+import 'task_actions.dart';
 import '../../widgets/admin/async_view.dart';
 import '../../widgets/manager/task_tile.dart';
 import 'task_form_screen.dart';
@@ -91,6 +92,16 @@ class _TaskDetailView extends StatelessWidget {
       return;
     }
 
+    // Same rule as the lists and the board: the clock follows the
+    // status for whoever the task belongs to.
+    if (ok) {
+      await TaskActions.syncTimerForStatus(context, task, status);
+
+      if (!context.mounted) {
+        return;
+      }
+    }
+
     if (ok) {
       final TaskModel? updated = tasks.byId(task.id);
 
@@ -113,8 +124,9 @@ class _TaskDetailView extends StatelessWidget {
     final ProjectProvider projects = context.read<ProjectProvider>();
 
     final TeamModel? team = teams.byId(projects.byId(task.project)?.team);
+    final bool teamHasNoMembers = team == null || team.members.isEmpty;
 
-    final List<UserModel> candidates = team == null || team.members.isEmpty
+    final List<UserModel> candidates = teamHasNoMembers
         ? users.allUsers
         : users.allUsers
             .where((UserModel u) =>
@@ -123,8 +135,11 @@ class _TaskDetailView extends StatelessWidget {
 
     final int? picked = await pickAssignee(
       context,
-      candidates: candidates.isEmpty ? users.allUsers : candidates,
+      candidates: candidates,
       current: task.assignee,
+      scopeNote: teamHasNoMembers
+          ? "This project's team has nobody in it yet - showing everyone."
+          : null,
     );
 
     if (picked == null) {
@@ -133,6 +148,16 @@ class _TaskDetailView extends StatelessWidget {
 
     final int? userId = picked == -1 ? null : picked;
     final bool ok = await tasks.assignTo(task.id, userId);
+
+    if (ok) {
+      // Belt and braces: apply the change locally right away rather
+      // than waiting on whatever the server's response contained - the
+      // list behind this screen must never show the old assignee until
+      // a manual pull-to-refresh.
+      tasks.replaceLocally(
+        task.copyWith(assignee: userId, clearAssignee: userId == null),
+      );
+    }
 
     if (!context.mounted) {
       return;
@@ -183,11 +208,6 @@ class _TaskDetailView extends StatelessWidget {
                 onPressed: () => _edit(context, task),
                 icon: const Icon(Icons.edit_outlined),
               ),
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed: detail.refresh,
-              icon: const Icon(Icons.refresh),
-            ),
           ],
           bottom: const TabBar(
             tabs: <Widget>[
@@ -268,7 +288,9 @@ class _OverviewTab extends StatelessWidget {
           ),
           const SizedBox(height: 6),
           Text(
-            projects.byId(task.project)?.name ?? 'Project #${task.project}',
+            task.projectName ??
+                projects.byId(task.project)?.name ??
+                'Project #${task.project}',
             style: theme.textTheme.bodyMedium?.copyWith(
               color: theme.colorScheme.onSurfaceVariant,
             ),
@@ -357,7 +379,7 @@ class _OverviewTab extends StatelessWidget {
                     label: 'Due',
                     value: task.dueDate == null
                         ? 'Not set'
-                        : '${formatDate(task.dueDate)} · ${dueLabel(task.dueDate)}',
+                        : '${formatDate(task.dueDate)} · ${dueLabel(task.dueDate, closed: task.isCompleted)}',
                   ),
                   _InfoRow(
                     icon: Icons.person_add_alt,

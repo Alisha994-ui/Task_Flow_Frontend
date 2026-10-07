@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/notification_model.dart';
@@ -53,7 +54,7 @@ class NotificationProvider extends ChangeNotifier {
       _all = await NotificationService.getNotifications();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -87,7 +88,7 @@ class NotificationProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       // Put it back the way it was.
       _all = _all
@@ -114,7 +115,7 @@ class NotificationProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {

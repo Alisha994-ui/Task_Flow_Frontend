@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../core/constants/project_constants.dart';
@@ -96,7 +97,7 @@ class UserProvider extends ChangeNotifier {
       _all = await UserService.getUsers();
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
     } finally {
       _isLoading = false;
       notifyListeners();
@@ -154,7 +155,7 @@ class UserProvider extends ChangeNotifier {
 
       return created;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return null;
     } finally {
@@ -196,7 +197,7 @@ class UserProvider extends ChangeNotifier {
 
       return updated;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return null;
     } finally {
@@ -221,7 +222,7 @@ class UserProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {

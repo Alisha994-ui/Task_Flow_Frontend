@@ -1,3 +1,4 @@
+import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
 import '../models/activity_log_model.dart';
@@ -64,7 +65,7 @@ class TaskDetailProvider extends ChangeNotifier {
       _task = await TaskService.getTask(taskId);
       _error = null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
       _isLoading = false;
       notifyListeners();
 
@@ -118,7 +119,7 @@ class TaskDetailProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {
@@ -143,7 +144,7 @@ class TaskDetailProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {
@@ -163,7 +164,7 @@ class TaskDetailProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {
@@ -214,7 +215,7 @@ class TaskDetailProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {
@@ -259,7 +260,7 @@ class TaskDetailProvider extends ChangeNotifier {
 
       return null;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return 'Could not upload the file.';
     } finally {
@@ -280,7 +281,7 @@ class TaskDetailProvider extends ChangeNotifier {
 
       return true;
     } catch (e) {
-      _error = e.toString();
+      _error = friendlyError(e);
 
       return false;
     } finally {

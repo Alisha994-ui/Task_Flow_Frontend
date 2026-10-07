@@ -82,11 +82,6 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
               onPressed: provider.isBusy ? null : _markAll,
               child: const Text('Mark all read'),
             ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: provider.refresh,
-            icon: const Icon(Icons.refresh),
-          ),
         ],
       ),
       body: Column(

@@ -5,7 +5,7 @@ import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../screens/admin/admin_panel_screen.dart';
 import '../screens/auth/login_screen.dart';
-import '../screens/viewer/viewer_dashboard_screen.dart';import '../screens/employee/employee_panel_screen.dart';
+import '../screens/employee/employee_panel_screen.dart';
 import '../screens/manager/manager_panel_screen.dart';
 import '../screens/splash/splash_screen.dart';
 import '../screens/team_lead/team_lead_panel_screen.dart';
@@ -14,13 +14,10 @@ class AppRoutes {
   static const String splash = '/';
   static const String login = '/login';
 
-  // Dashboards - the route names stay the same, so login_screen and
-  // splash_screen do not need to change. Each one now opens the real panel.
   static const String adminDashboard = '/admin-dashboard';
   static const String projectManagerDashboard = '/project-manager-dashboard';
   static const String teamLeadDashboard = '/team-lead-dashboard';
   static const String employeeDashboard = '/employee-dashboard';
-  static const String viewerDashboard = '/viewer-dashboard';
 
   static Route<dynamic> generateRoute(RouteSettings settings) {
     switch (settings.name) {
@@ -34,15 +31,11 @@ class AppRoutes {
           builder: (_) => const LoginScreen(),
         );
 
-      // Admin needs no arguments - it shows everything.
       case adminDashboard:
         return MaterialPageRoute(
           builder: (_) => const AdminPanelScreen(),
         );
 
-      // The next three scope their screens to the signed-in user, so they
-      // read that user straight from AuthProvider instead of expecting it
-      // to be passed in as a route argument.
       case projectManagerDashboard:
         return MaterialPageRoute(
           builder: (context) {
@@ -79,12 +72,6 @@ class AppRoutes {
           },
         );
 
-      // Viewer still uses the placeholder screen.
-      case viewerDashboard:
-        return MaterialPageRoute(
-          builder: (_) => const ViewerDashboardScreen(),
-        );
-
       default:
         return MaterialPageRoute(
           builder: (_) => const LoginScreen(),
@@ -105,9 +92,6 @@ class AppRoutes {
 
       case 'EMPLOYEE':
         return employeeDashboard;
-
-      case 'VIEWER':
-        return viewerDashboard;
 
       default:
         return login;

@@ -32,13 +32,6 @@ class EmployeeTimeLogsScreen extends StatelessWidget {
     return Scaffold(
       appBar: AppBar(
         title: const Text('Time logs'),
-        actions: <Widget>[
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: timer.refresh,
-            icon: const Icon(Icons.refresh),
-          ),
-        ],
       ),
       body: AsyncView(
         isLoading: timer.isLoading && timer.logs.isEmpty,

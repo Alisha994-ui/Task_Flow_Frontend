@@ -3,6 +3,16 @@ import '../core/constants/task_constants.dart';
 class TaskModel {
   final int id;
   final int project;
+
+  /// The project's name, when the API embeds it directly on the task
+  /// (e.g. `project_name`). Some endpoints only return this for roles
+  /// that are also allowed to list `/projects/`; for everyone else this
+  /// is null and the project list lookup is used instead. Keeping it
+  /// here means an employee whose project is not in their own
+  /// `/projects/` list can still see the real name instead of a
+  /// `Project #N` placeholder.
+  final String? projectName;
+
   final String title;
   final String description;
   final int? assignee;
@@ -21,6 +31,7 @@ class TaskModel {
     required this.project,
     required this.title,
     required this.description,
+    this.projectName,
     this.assignee,
     this.creator,
     required this.priority,
@@ -37,6 +48,10 @@ class TaskModel {
     return TaskModel(
       id: json['id'] ?? 0,
       project: json['project'] ?? 0,
+      projectName: (json['project_name'] ??
+              json['project_detail']?['name'] ??
+              json['project_title'])
+          ?.toString(),
       title: json['title'] ?? '',
       description: json['description'] ?? '',
       assignee: json['assignee'],
@@ -102,6 +117,7 @@ class TaskModel {
     return TaskModel(
       id: id,
       project: project,
+      projectName: projectName,
       title: title ?? this.title,
       description: description ?? this.description,
       assignee: clearAssignee ? null : (assignee ?? this.assignee),

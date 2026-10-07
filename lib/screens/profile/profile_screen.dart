@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -6,7 +8,9 @@ import '../../core/push/push_service.dart';
 import '../../core/utils/contact.dart';
 import '../../models/user_model.dart';
 import '../../providers/admin_dashboard_provider.dart';
+import '../../providers/assistant_provider.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/coach_provider.dart';
 import '../../providers/manager_provider.dart';
 import '../../providers/notification_provider.dart';
 import '../../providers/project_provider.dart';
@@ -63,7 +67,6 @@ class ProfileScreen extends StatelessWidget {
     final AuthProvider auth = context.watch<AuthProvider>();
     final UserModel? user = auth.user;
 
-
     return Scaffold(
       appBar: AppBar(title: const Text('Profile')),
       body: ListView(
@@ -76,7 +79,9 @@ class ProfileScreen extends StatelessWidget {
                   name: user?.fullName ?? 'User',
                   imageUrl: user?.profileImage,
                   radius: 44,
-                  color: user == null ? null : UserRoles.color(user.role),
+                  color: user == null
+                      ? null
+                      : UserRoles.color(user.role),
                 ),
                 const SizedBox(height: 14),
                 Text(
@@ -128,21 +133,26 @@ class ProfileScreen extends StatelessWidget {
                   value: (user?.phone == null || user!.phone!.isEmpty)
                       ? 'Not provided'
                       : user.phone!,
-                  onTap: (user?.phone == null || user!.phone!.isEmpty)
-                      ? null
-                      : () => openDialer(context, user.phone!),
+                  onTap:
+                      (user?.phone == null || user!.phone!.isEmpty)
+                          ? null
+                          : () => openDialer(context, user.phone!),
                 ),
                 const Divider(height: 1, indent: 56),
                 _InfoTile(
                   icon: Icons.badge_outlined,
                   label: 'Role',
-                  value: user == null ? '-' : UserRoles.label(user.role),
+                  value: user == null
+                      ? '-'
+                      : UserRoles.label(user.role),
                 ),
                 const Divider(height: 1, indent: 56),
                 _InfoTile(
                   icon: Icons.toggle_on_outlined,
                   label: 'Status',
-                  value: (user?.status ?? false) ? 'Active' : 'Inactive',
+                  value: (user?.status ?? false)
+                      ? 'Active'
+                      : 'Inactive',
                 ),
               ],
             ),
@@ -179,14 +189,18 @@ class ProfileScreen extends StatelessWidget {
 /// without this the next person to sign in would briefly see the previous
 /// user's tasks, notifications and counts.
 Future<void> signOut(BuildContext context) async {
-  // Do this first: once the token is gone the backend stops sending to
-  // this phone, so the next person on it gets nothing of yours.
-  await PushService.unregisterDevice();
+  // Do not make logout wait for the push notification API.
+  // The unregister request runs in the background.
+  unawaited(
+    PushService.unregisterDevice().catchError((_) {}),
+  );
 
   if (!context.mounted) {
     return;
   }
 
+  context.read<AssistantProvider>().reset();
+  context.read<CoachProvider>().reset();
   context.read<TaskProvider>().reset();
   context.read<NotificationProvider>().reset();
   context.read<TimeLogProvider>().reset();
@@ -246,7 +260,10 @@ class _InfoTile extends StatelessWidget {
           color: theme.colorScheme.onSurfaceVariant,
         ),
       ),
-      subtitle: Text(value, style: theme.textTheme.bodyMedium),
+      subtitle: Text(
+        value,
+        style: theme.textTheme.bodyMedium,
+      ),
     );
   }
 }

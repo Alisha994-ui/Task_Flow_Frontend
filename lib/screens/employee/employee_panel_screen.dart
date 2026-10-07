@@ -1,5 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../screens/assistant/assistant_panel.dart';
+
+import '../../core/utils/auto_refresh.dart';
 
 import '../../providers/manager_provider.dart';
 import '../../providers/project_provider.dart';
@@ -9,6 +12,7 @@ import '../../providers/time_log_provider.dart';
 import '../../providers/user_provider.dart';
 import '../manager/tabs/manager_calendar_tab.dart';
 import '../../providers/notification_provider.dart';
+import '../../widgets/admin/admin_widgets.dart';
 import '../../widgets/notification_bell.dart';
 import '../../screens/profile/profile_screen.dart';
 import 'tabs/employee_dashboard_tab.dart';
@@ -50,6 +54,15 @@ class EmployeePanelArgs {
 class _EmployeePanelScreenState extends State<EmployeePanelScreen> {
   int _index = 0;
 
+  /// Pulls fresh data on a timer and whenever the app comes
+  /// back to the front, so nobody has to press anything.
+  late final AutoRefresher _auto;
+
+  /// The assistant lives in this scaffold's end drawer, so it can
+  /// switch tabs directly rather than pushing a page on top.
+  final GlobalKey<ScaffoldState> _scaffoldKey =
+      GlobalKey<ScaffoldState>();
+
   static const List<String> _titles = <String>[
     'Today',
     'My tasks',
@@ -60,6 +73,8 @@ class _EmployeePanelScreenState extends State<EmployeePanelScreen> {
   @override
   void initState() {
     super.initState();
+
+    _auto = AutoRefresher(onRefresh: _loadAll);
 
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       if (!mounted) {
@@ -82,6 +97,8 @@ class _EmployeePanelScreenState extends State<EmployeePanelScreen> {
 
       await _loadAll();
 
+      _auto.start();
+
       if (!mounted) {
         return;
       }
@@ -97,6 +114,12 @@ class _EmployeePanelScreenState extends State<EmployeePanelScreen> {
         }
       }
     });
+  }
+
+  @override
+  void dispose() {
+    _auto.dispose();
+    super.dispose();
   }
 
   Future<void> _loadAll() async {
@@ -122,9 +145,24 @@ class _EmployeePanelScreenState extends State<EmployeePanelScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      key: _scaffoldKey,
+      endDrawer: AssistantPanel(
+        destinations: const <String, int>{
+            'today': 0,
+            'tasks': 1,
+            'calendar': 2,
+            'more': 3,
+        },
+        onGoTo: (int index) => setState(() => _index = index),
+      ),
       appBar: AppBar(
         title: Text(_titles[_index]),
         actions: <Widget>[
+          IconButton(
+            tooltip: 'Assistant',
+            onPressed: () => _scaffoldKey.currentState?.openEndDrawer(),
+            icon: const Icon(Icons.auto_awesome),
+          ),
           const NotificationBell(canManageTasks: false),
           IconButton(
             tooltip: 'Profile',
@@ -135,20 +173,22 @@ class _EmployeePanelScreenState extends State<EmployeePanelScreen> {
             ),
             icon: const Icon(Icons.account_circle_outlined),
           ),
-          IconButton(
-            tooltip: 'Refresh',
-            onPressed: _loadAll,
-            icon: const Icon(Icons.refresh),
-          ),
         ],
       ),
-      body: IndexedStack(
-        index: _index,
+      body: Column(
         children: <Widget>[
-          EmployeeDashboardTab(onSeeAllTasks: _goToTasks),
-          const EmployeeTasksTab(),
-          const ManagerCalendarTab(canManage: false),
-          const EmployeeMoreTab(),
+          const OfflineBanner(),
+          Expanded(
+            child: IndexedStack(
+              index: _index,
+              children: <Widget>[
+                EmployeeDashboardTab(onSeeAllTasks: _goToTasks),
+                const EmployeeTasksTab(),
+                const ManagerCalendarTab(canManage: false),
+                const EmployeeMoreTab(),
+              ],
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: NavigationBar(

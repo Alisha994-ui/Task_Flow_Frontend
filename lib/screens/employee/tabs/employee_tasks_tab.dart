@@ -1,11 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../../widgets/manager/task_board.dart';
 
 import '../../../core/constants/project_constants.dart';
 import '../../../core/constants/task_constants.dart';
 import '../../../models/task_model.dart';
 import '../../../providers/task_provider.dart';
 import '../../../providers/time_log_provider.dart';
+import '../../../widgets/admin/admin_widgets.dart';
 import '../../../widgets/admin/async_view.dart';
 import '../../../widgets/manager/task_tile.dart';
 import '../../manager/task_actions.dart';
@@ -21,6 +23,10 @@ class EmployeeTasksTab extends StatefulWidget {
 
 class _EmployeeTasksTabState extends State<EmployeeTasksTab> {
   late final TextEditingController _searchController;
+
+  /// List or board. Kept per screen rather than in the provider -
+  /// it is a view preference, not data.
+  bool _board = false;
 
   @override
   void initState() {
@@ -122,31 +128,55 @@ class _EmployeeTasksTabState extends State<EmployeeTasksTab> {
             ],
           ),
         ),
-        if (visible.isNotEmpty)
-          Padding(
-            padding: const EdgeInsets.fromLTRB(20, 0, 20, 4),
-            child: Row(
-              children: <Widget>[
-                Text(
-                  '${visible.length} ${visible.length == 1 ? 'task' : 'tasks'}',
-                  style: Theme.of(context).textTheme.bodySmall?.copyWith(
-                        color: Theme.of(context).colorScheme.onSurfaceVariant,
-                      ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 12, 4),
+          child: Row(
+            children: <Widget>[
+              Text(
+                '${visible.length} ${visible.length == 1 ? 'task' : 'tasks'}',
+                style: Theme.of(context).textTheme.bodySmall,
+              ),
+              const Spacer(),
+              if (tasks.hasFilters)
+                TextButton(
+                  onPressed: () {
+                    _searchController.clear();
+                    tasks.clearFilters();
+                  },
+                  child: const Text('Clear filters'),
                 ),
-                const Spacer(),
-                if (tasks.hasFilters)
-                  TextButton(
-                    onPressed: () {
-                      _searchController.clear();
-                      tasks.clearFilters();
-                    },
-                    child: const Text('Clear filters'),
+              // List or board. The board drops the status filter, since
+              // the columns are the statuses.
+              SegmentedButton<bool>(
+                segments: const <ButtonSegment<bool>>[
+                  ButtonSegment<bool>(
+                    value: false,
+                    icon: Icon(Icons.view_list_outlined, size: 18),
                   ),
-              ],
-            ),
+                  ButtonSegment<bool>(
+                    value: true,
+                    icon: Icon(Icons.view_kanban_outlined, size: 18),
+                  ),
+                ],
+                selected: <bool>{_board},
+                showSelectedIcon: false,
+                style: const ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
+                onSelectionChanged: (Set<bool> value) =>
+                    setState(() => _board = value.first),
+              ),
+            ],
           ),
+        ),
         Expanded(
-          child: AsyncView(
+          child: _board
+              ? TaskBoard(
+                  canManage: false,
+                  showProject: true,
+                )
+              : AsyncView(
             isLoading: tasks.isLoading && tasks.allTasks.isEmpty,
             error: tasks.allTasks.isEmpty ? tasks.error : null,
             isEmpty: visible.isEmpty,
@@ -168,12 +198,14 @@ class _EmployeeTasksTabState extends State<EmployeeTasksTab> {
                   )
                 : null,
             child: RefreshIndicator(
-              onRefresh: () async {
-                await Future.wait<void>(<Future<void>>[
+              onRefresh: () => refreshWithFeedback(
+                context,
+                () => Future.wait<void>(<Future<void>>[
                   tasks.refresh(),
                   timer.refresh(),
-                ]);
-              },
+                ]),
+                () => tasks.error,
+              ),
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),
                 padding: const EdgeInsets.fromLTRB(16, 4, 16, 32),

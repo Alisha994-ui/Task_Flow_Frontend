@@ -90,13 +90,6 @@ class _ManagerProjectDetailViewState extends State<_ManagerProjectDetailView>
     return Scaffold(
         appBar: AppBar(
           title: Text(project?.name ?? 'Project'),
-          actions: <Widget>[
-            IconButton(
-              tooltip: 'Refresh',
-              onPressed: detail.refresh,
-              icon: const Icon(Icons.refresh),
-            ),
-          ],
           bottom: TabBar(
             controller: _tabs,
             isScrollable: true,
@@ -175,7 +168,7 @@ class _OverviewTab extends StatelessWidget {
       onRefresh: detail.refresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         children: <Widget>[
           if (context.watch<ManagerProvider>().managerId != null &&
               isProjectClosed(project)) ...<Widget>[
@@ -272,7 +265,11 @@ class _OverviewTab extends StatelessWidget {
                     label: 'Ends',
                     value: project.endDate == null
                         ? 'Not set'
-                        : '${formatDate(project.endDate)} · ${dueLabel(project.endDate)}',
+                        : '${formatDate(project.endDate)} · ${dueLabel(
+                            project.endDate,
+                            closed: project.status == ProjectStatus.completed ||
+                                project.status == ProjectStatus.cancelled,
+                          )}',
                   ),
                 ],
               ),
@@ -361,7 +358,7 @@ class _TasksTab extends StatelessWidget {
       onRefresh: tasks.refresh,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+        padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
         itemCount: projectTasks.length,
         separatorBuilder: (_, _) => const SizedBox(height: 10),
         itemBuilder: (BuildContext context, int index) {
@@ -475,7 +472,7 @@ class _ActivityTabState extends State<_ActivityTab> {
         onRefresh: _load,
         child: ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),
-          padding: const EdgeInsets.fromLTRB(16, 16, 16, 96),
+          padding: const EdgeInsets.fromLTRB(16, 16, 16, 120),
           itemCount: _logs.length,
           itemBuilder: (BuildContext context, int index) {
             final ActivityLogModel log = _logs[index];

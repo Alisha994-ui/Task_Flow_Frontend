@@ -107,7 +107,7 @@ class _ManagerCalendarTabState extends State<ManagerCalendarTab> {
             child: dayTasks.isEmpty
                 ? _EmptyDay(day: _selectedDay)
                 : ListView.separated(
-                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 96),
+                    padding: const EdgeInsets.fromLTRB(16, 12, 16, 120),
                     itemCount: dayTasks.length + 1,
                     separatorBuilder: (_, _) => const SizedBox(height: 10),
                     itemBuilder: (BuildContext context, int index) {

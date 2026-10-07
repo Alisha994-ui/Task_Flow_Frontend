@@ -7,6 +7,7 @@ import '../../core/theme/app_theme.dart';
 import '../../core/utils/contact.dart';
 import '../../providers/auth_provider.dart';
 import '../../routes/app_routes.dart';
+import '../../services/app_config_service.dart';
 
 class LoginScreen extends StatefulWidget {
   const LoginScreen({super.key});
@@ -17,26 +18,67 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
+
+  final _scrollController = ScrollController();
+  final _passwordFocusNode = FocusNode();
 
   bool _isPasswordVisible = false;
 
   @override
+  void initState() {
+    super.initState();
+
+    AppConfigService.load();
+
+    _passwordFocusNode.addListener(_handlePasswordFocus);
+  }
+
+  @override
   void dispose() {
+    _passwordFocusNode.removeListener(_handlePasswordFocus);
+
+    _passwordFocusNode.dispose();
+    _scrollController.dispose();
+
     _usernameController.dispose();
     _passwordController.dispose();
+
     super.dispose();
   }
 
+  void _handlePasswordFocus() {
+    if (!_passwordFocusNode.hasFocus) {
+      return;
+    }
+
+    Future<void>.delayed(
+      const Duration(milliseconds: 300),
+      () {
+        if (!mounted || !_scrollController.hasClients) {
+          return;
+        }
+
+        _scrollController.animateTo(
+          _scrollController.position.maxScrollExtent,
+          duration: const Duration(milliseconds: 300),
+          curve: Curves.easeOut,
+        );
+      },
+    );
+  }
+
   Future<void> _login() async {
+    FocusScope.of(context).unfocus();
+
     if (!_formKey.currentState!.validate()) {
       return;
     }
 
-    FocusScope.of(context).unfocus();
-
-    final authProvider = context.read<AuthProvider>();
+    final AuthProvider authProvider =
+        context.read<AuthProvider>();
 
     try {
       await authProvider.login(
@@ -44,60 +86,101 @@ class _LoginScreenState extends State<LoginScreen> {
         password: _passwordController.text,
       );
 
-      // Tell the backend which phone this person just signed in on.
-      // Failures are swallowed inside the service - a missing push is
-      // never a reason to block a login.
       await PushService.registerDevice();
 
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
 
-      final route = AppRoutes.dashboardForRole(
+      final String route = AppRoutes.dashboardForRole(
         authProvider.role ?? '',
       );
 
-      Navigator.pushReplacementNamed(context, route);
+      Navigator.pushReplacementNamed(
+        context,
+        route,
+      );
     } catch (e) {
-      if (!mounted) return;
+      if (!mounted) {
+        return;
+      }
+
+      final String error = e.toString().toLowerCase();
+
+      String message;
+
+      if (error.contains('401') ||
+          error.contains('unauthorized') ||
+          error.contains('invalid credentials') ||
+          error.contains('invalid username') ||
+          error.contains('invalid password') ||
+          error.contains('incorrect username') ||
+          error.contains('incorrect password') ||
+          error.contains('authentication failed') ||
+          error.contains('token not valid') ||
+          error.contains('session expired') ||
+          error.contains('no active account')) {
+        message = 'Incorrect username or password.';
+      } else if (error.contains('network') ||
+          error.contains('connection') ||
+          error.contains('socket') ||
+          error.contains('timeout') ||
+          error.contains('failed host lookup') ||
+          error.contains('connection refused')) {
+        message =
+            'Unable to connect to the server. Please try again.';
+      } else {
+        message =
+            'Incorrect username or password. Please try again.';
+      }
 
       ScaffoldMessenger.of(context)
         ..hideCurrentSnackBar()
         ..showSnackBar(
           SnackBar(
-            content: Text(
-              e.toString().replaceFirst('Exception: ', ''),
-            ),
-            backgroundColor: Theme.of(context).colorScheme.error,
+            content: Text(message),
+            backgroundColor:
+                Theme.of(context).colorScheme.error,
           ),
         );
     }
   }
 
-  /// Passwords are reset by an administrator - there is no self-serve
-  /// reset endpoint on the API, so saying so plainly beats a dead link.
   void _showPasswordHelp() {
     showModalBottomSheet<void>(
       context: context,
       showDragHandle: true,
       builder: (BuildContext sheetContext) {
         final ThemeData theme = Theme.of(sheetContext);
-        final String username = _usernameController.text.trim();
+
+        final String username =
+            _usernameController.text.trim();
 
         return SafeArea(
           child: Padding(
-            padding: const EdgeInsets.fromLTRB(24, 0, 24, 28),
+            padding: const EdgeInsets.fromLTRB(
+              24,
+              0,
+              24,
+              28,
+            ),
             child: Column(
               mainAxisSize: MainAxisSize.min,
-              crossAxisAlignment: CrossAxisAlignment.start,
+              crossAxisAlignment:
+                  CrossAxisAlignment.start,
               children: <Widget>[
                 Container(
                   padding: const EdgeInsets.all(12),
                   decoration: BoxDecoration(
-                    color: theme.colorScheme.primaryContainer,
-                    borderRadius: BorderRadius.circular(12),
+                    color:
+                        theme.colorScheme.primaryContainer,
+                    borderRadius:
+                        BorderRadius.circular(12),
                   ),
                   child: Icon(
                     Icons.lock_reset,
-                    color: theme.colorScheme.onPrimaryContainer,
+                    color: theme
+                        .colorScheme.onPrimaryContainer,
                   ),
                 ),
                 const SizedBox(height: 18),
@@ -111,7 +194,8 @@ class _LoginScreenState extends State<LoginScreen> {
                   'there is no reset link. Ask whoever set up your account '
                   'and they can set a new password for you.',
                   style: theme.textTheme.bodyMedium?.copyWith(
-                    color: theme.colorScheme.onSurfaceVariant,
+                    color:
+                        theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 20),
@@ -127,7 +211,8 @@ class _LoginScreenState extends State<LoginScreen> {
                         fontWeight: FontWeight.w600,
                       ),
                     ),
-                    subtitle: const Text('Tap to write to them'),
+                    subtitle:
+                        const Text('Tap to write to them'),
                     trailing: Icon(
                       Icons.north_east,
                       size: 16,
@@ -167,10 +252,15 @@ class _LoginScreenState extends State<LoginScreen> {
                           fontWeight: FontWeight.w600,
                         ),
                       ),
-                      subtitle: const Text('Tap to call'),
+                      subtitle:
+                          const Text('Tap to call'),
                       onTap: () {
                         Navigator.of(sheetContext).pop();
-                        openDialer(context, AppConfig.supportPhone);
+
+                        openDialer(
+                          context,
+                          AppConfig.supportPhone,
+                        );
                       },
                     ),
                   ),
@@ -189,32 +279,50 @@ class _LoginScreenState extends State<LoginScreen> {
     final ColorScheme scheme = theme.colorScheme;
 
     return Scaffold(
+      resizeToAvoidBottomInset: true,
       body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.fromLTRB(24, 32, 24, 32),
+        child: SingleChildScrollView(
+          controller: _scrollController,
+          keyboardDismissBehavior:
+              ScrollViewKeyboardDismissBehavior.onDrag,
+          padding: const EdgeInsets.fromLTRB(
+            24,
+            32,
+            24,
+            40,
+          ),
+          child: Center(
             child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 420),
+              constraints:
+                  const BoxConstraints(maxWidth: 420),
               child: Form(
                 key: _formKey,
                 child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  crossAxisAlignment:
+                      CrossAxisAlignment.stretch,
                   children: <Widget>[
-                    // Mark: four bars, longest done - the shape of a task
-                    // list making progress.
                     const _BrandMark(),
+
                     const SizedBox(height: 28),
 
                     Text(
                       'TaskFlow',
-                      style: theme.textTheme.headlineLarge?.copyWith(
+                      style: theme
+                          .textTheme
+                          .headlineLarge
+                          ?.copyWith(
                         fontSize: 34,
                       ),
                     ),
+
                     const SizedBox(height: 6),
+
                     Text(
                       'Sign in to pick up where your team left off.',
-                      style: theme.textTheme.bodyLarge?.copyWith(
+                      style: theme
+                          .textTheme
+                          .bodyLarge
+                          ?.copyWith(
                         color: scheme.onSurfaceVariant,
                       ),
                     ),
@@ -223,30 +331,46 @@ class _LoginScreenState extends State<LoginScreen> {
 
                     Card(
                       child: Padding(
-                        padding: const EdgeInsets.fromLTRB(20, 22, 20, 22),
+                        padding: const EdgeInsets.fromLTRB(
+                          20,
+                          22,
+                          20,
+                          22,
+                        ),
                         child: Column(
-                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          crossAxisAlignment:
+                              CrossAxisAlignment.stretch,
                           children: <Widget>[
                             Text(
                               'Username',
-                              style: theme.textTheme.labelLarge,
+                              style:
+                                  theme.textTheme.labelLarge,
                             ),
+
                             const SizedBox(height: 8),
+
                             TextFormField(
-                              controller: _usernameController,
-                              textInputAction: TextInputAction.next,
+                              controller:
+                                  _usernameController,
+                              textInputAction:
+                                  TextInputAction.next,
                               autocorrect: false,
-                              decoration: const InputDecoration(
-                                hintText: 'your.username',
+                              autovalidateMode:
+                                  AutovalidateMode.disabled,
+                              decoration:
+                                  const InputDecoration(
+                                hintText: 'username',
                                 prefixIcon: Icon(
                                   Icons.person_outline,
                                   size: 20,
                                 ),
                               ),
                               validator: (value) {
-                                if (value == null || value.trim().isEmpty) {
+                                if (value == null ||
+                                    value.trim().isEmpty) {
                                   return 'Enter your username';
                                 }
+
                                 return null;
                               },
                             ),
@@ -255,21 +379,36 @@ class _LoginScreenState extends State<LoginScreen> {
 
                             Text(
                               'Password',
-                              style: theme.textTheme.labelLarge,
+                              style:
+                                  theme.textTheme.labelLarge,
                             ),
+
                             const SizedBox(height: 8),
+
                             TextFormField(
-                              controller: _passwordController,
-                              obscureText: !_isPasswordVisible,
-                              textInputAction: TextInputAction.done,
-                              onFieldSubmitted: (_) => _login(),
-                              decoration: InputDecoration(
-                                hintText: 'Enter your password',
-                                prefixIcon: const Icon(
+                              controller:
+                                  _passwordController,
+                              focusNode:
+                                  _passwordFocusNode,
+                              obscureText:
+                                  !_isPasswordVisible,
+                              textInputAction:
+                                  TextInputAction.done,
+                              onFieldSubmitted: (_) =>
+                                  _login(),
+                              autovalidateMode:
+                                  AutovalidateMode.disabled,
+                              decoration:
+                                  InputDecoration(
+                                hintText:
+                                    'Enter your password',
+                                prefixIcon:
+                                    const Icon(
                                   Icons.lock_outline,
                                   size: 20,
                                 ),
-                                suffixIcon: IconButton(
+                                suffixIcon:
+                                    IconButton(
                                   onPressed: () {
                                     setState(() {
                                       _isPasswordVisible =
@@ -278,16 +417,20 @@ class _LoginScreenState extends State<LoginScreen> {
                                   },
                                   icon: Icon(
                                     _isPasswordVisible
-                                        ? Icons.visibility_off_outlined
-                                        : Icons.visibility_outlined,
+                                        ? Icons
+                                            .visibility_off_outlined
+                                        : Icons
+                                            .visibility_outlined,
                                     size: 20,
                                   ),
                                 ),
                               ),
                               validator: (value) {
-                                if (value == null || value.isEmpty) {
+                                if (value == null ||
+                                    value.isEmpty) {
                                   return 'Enter your password';
                                 }
+
                                 return null;
                               },
                             ),
@@ -295,31 +438,50 @@ class _LoginScreenState extends State<LoginScreen> {
                             const SizedBox(height: 14),
 
                             Align(
-                              alignment: Alignment.centerRight,
+                              alignment:
+                                  Alignment.centerRight,
                               child: TextButton(
-                                onPressed: _showPasswordHelp,
-                                child: const Text('Forgot your password?'),
+                                onPressed:
+                                    _showPasswordHelp,
+                                child: const Text(
+                                  'Forgot your password?',
+                                ),
                               ),
                             ),
+
                             const SizedBox(height: 10),
 
                             Consumer<AuthProvider>(
-                              builder: (context, auth, child) {
+                              builder: (
+                                context,
+                                auth,
+                                child,
+                              ) {
                                 return FilledButton(
-                                  onPressed: auth.isLoading ? null : _login,
-                                  style: FilledButton.styleFrom(
-                                    minimumSize: const Size.fromHeight(52),
+                                  onPressed:
+                                      auth.isLoading
+                                          ? null
+                                          : _login,
+                                  style:
+                                      FilledButton.styleFrom(
+                                    minimumSize:
+                                        const Size.fromHeight(
+                                      52,
+                                    ),
                                   ),
                                   child: auth.isLoading
                                       ? const SizedBox(
                                           height: 20,
                                           width: 20,
-                                          child: CircularProgressIndicator(
+                                          child:
+                                              CircularProgressIndicator(
                                             strokeWidth: 2.2,
                                             color: Colors.white,
                                           ),
                                         )
-                                      : const Text('Sign in'),
+                                      : const Text(
+                                          'Sign in',
+                                        ),
                                 );
                               },
                             ),
@@ -346,13 +508,13 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 }
 
-/// Four stacked bars, the top one filled - a checklist getting done.
 class _BrandMark extends StatelessWidget {
   const _BrandMark();
 
   @override
   Widget build(BuildContext context) {
-    final ColorScheme scheme = Theme.of(context).colorScheme;
+    final ColorScheme scheme =
+        Theme.of(context).colorScheme;
 
     return Align(
       alignment: Alignment.centerLeft,
@@ -362,16 +524,34 @@ class _BrandMark extends StatelessWidget {
         padding: const EdgeInsets.all(14),
         decoration: BoxDecoration(
           color: scheme.primary,
-          borderRadius: BorderRadius.circular(AppTheme.radiusSmall),
+          borderRadius:
+              BorderRadius.circular(AppTheme.radiusSmall),
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          crossAxisAlignment:
+              CrossAxisAlignment.start,
+          mainAxisAlignment:
+              MainAxisAlignment.spaceBetween,
           children: <Widget>[
-            _Bar(width: 28, color: scheme.onPrimary),
-            _Bar(width: 20, color: scheme.onPrimary.withValues(alpha: 0.72)),
-            _Bar(width: 24, color: scheme.onPrimary.withValues(alpha: 0.48)),
-            _Bar(width: 14, color: scheme.onPrimary.withValues(alpha: 0.30)),
+            _Bar(
+              width: 28,
+              color: scheme.onPrimary,
+            ),
+            _Bar(
+              width: 20,
+              color: scheme.onPrimary
+                  .withValues(alpha: 0.72),
+            ),
+            _Bar(
+              width: 24,
+              color: scheme.onPrimary
+                  .withValues(alpha: 0.48),
+            ),
+            _Bar(
+              width: 14,
+              color: scheme.onPrimary
+                  .withValues(alpha: 0.30),
+            ),
           ],
         ),
       ),
@@ -380,7 +560,10 @@ class _BrandMark extends StatelessWidget {
 }
 
 class _Bar extends StatelessWidget {
-  const _Bar({required this.width, required this.color});
+  const _Bar({
+    required this.width,
+    required this.color,
+  });
 
   final double width;
   final Color color;
