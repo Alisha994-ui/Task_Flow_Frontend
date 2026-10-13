@@ -9,6 +9,7 @@ import '../../providers/task_provider.dart';
 import '../../providers/time_log_provider.dart';
 import '../../widgets/admin/admin_widgets.dart';
 import '../../widgets/admin/async_view.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 /// Everything this user has tracked, newest first.
 class EmployeeTimeLogsScreen extends StatelessWidget {
@@ -42,7 +43,7 @@ class EmployeeTimeLogsScreen extends StatelessWidget {
         emptyTitle: 'No time tracked yet',
         emptyMessage:
             'Start a timer from one of your tasks and it will show up here.',
-        child: RefreshIndicator(
+        child: AppRefreshIndicator(
           onRefresh: timer.refresh,
           child: ListView(
             physics: const AlwaysScrollableScrollPhysics(),

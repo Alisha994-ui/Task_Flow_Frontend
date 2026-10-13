@@ -2,10 +2,15 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/coach/builtin_flows.dart';
+import '../../core/utils/local_answers.dart';
+import '../../core/utils/reporting_line.dart';
 import '../../models/assistant_message_model.dart';
 import '../../providers/assistant_provider.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/coach_provider.dart';
+import '../../providers/project_provider.dart';
+import '../../providers/team_provider.dart';
+import '../../providers/user_provider.dart';
 
 /// The assistant, as a panel that slides in over whatever you were
 /// doing.
@@ -39,10 +44,25 @@ class AssistantPanel extends StatefulWidget {
 class _AssistantPanelState extends State<AssistantPanel> {
   final TextEditingController _controller = TextEditingController();
   final ScrollController _scroll = ScrollController();
+  final FocusNode _focus = FocusNode();
 
   @override
   void initState() {
     super.initState();
+
+    // When the keyboard comes up, keep the latest message in view.
+    _focus.addListener(() {
+      if (_focus.hasFocus) {
+        Future<void>.delayed(
+          const Duration(milliseconds: 300),
+          () {
+            if (mounted) {
+              _scrollToEnd();
+            }
+          },
+        );
+      }
+    });
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final AssistantProvider assistant = context.read<AssistantProvider>();
@@ -57,6 +77,7 @@ class _AssistantPanelState extends State<AssistantPanel> {
   void dispose() {
     _controller.dispose();
     _scroll.dispose();
+    _focus.dispose();
     super.dispose();
   }
 
@@ -76,6 +97,12 @@ class _AssistantPanelState extends State<AssistantPanel> {
     final String text = preset ?? _controller.text;
 
     if (text.trim().isEmpty) {
+      return;
+    }
+
+    // One question at a time: keep what was typed instead of clearing
+    // it and silently dropping it.
+    if (context.read<AssistantProvider>().isThinking) {
       return;
     }
 
@@ -102,6 +129,51 @@ class _AssistantPanelState extends State<AssistantPanel> {
     }
 
     final AssistantProvider assistant = context.read<AssistantProvider>();
+
+    // "Who is my manager?" is answered from data the app already has -
+    // by name, with email, instantly - instead of waiting on the model.
+    final UserProvider users = context.read<UserProvider>();
+    final TeamProvider teams = context.read<TeamProvider>();
+    final ProjectProvider projects = context.read<ProjectProvider>();
+
+    // Only "who is my manager?" needs this data. Loading it for every
+    // question held the send back for up to 6 seconds with nothing on
+    // screen - the typed text gone and no bubble - which read as the
+    // assistant not working.
+    if (isReportingQuestion(text)) {
+      // Best effort: if this is slow or fails, the question still goes
+      // to the assistant instead of vanishing.
+      try {
+        await Future.wait(<Future<void>>[
+          users.ensureLoaded(),
+          teams.ensureLoaded(),
+          projects.ensureLoaded(),
+        ]).timeout(const Duration(seconds: 6));
+      } catch (_) {}
+
+      if (!mounted) {
+        return;
+      }
+
+      final String? local = localReportingAnswer(
+        text,
+        resolveReportingLine(
+          userId: context.read<AuthProvider>().user?.id,
+          role: role,
+          users: users.allUsers,
+          teams: teams.allTeams,
+          projects: projects.allProjects,
+        ),
+      );
+
+      if (local != null) {
+        assistant.addLocalExchange(text, local);
+        _scrollToEnd();
+
+        return;
+      }
+    }
+
     final String? problem = await assistant.ask(text);
 
     if (!mounted) {
@@ -110,20 +182,32 @@ class _AssistantPanelState extends State<AssistantPanel> {
 
     _scrollToEnd();
 
+    // A failure is shown inside the panel (see _FailedNote): a SnackBar
+    // opened from the drawer appears behind it, which is why the question
+    // used to vanish with no visible error (BUG-27).
     if (problem != null) {
-      ScaffoldMessenger.of(context)
-        ..hideCurrentSnackBar()
-        ..showSnackBar(
-          SnackBar(
-            content: Text(problem),
-            backgroundColor: Theme.of(context).colorScheme.error,
-          ),
-        );
+      return;
+    }
 
+    // Paused (or stopped) - the answer, if any, is handled on resume.
+    if (assistant.isPaused) {
       return;
     }
 
     _followAnswer(assistant.messages.isEmpty ? '' : assistant.messages.last.text);
+  }
+
+  /// Resumes a paused question; if its answer was already waiting,
+  /// show it and act on it exactly as a fresh answer would.
+  void _resume() {
+    final AssistantProvider assistant = context.read<AssistantProvider>();
+    final bool shownNow = assistant.resumeAsk();
+
+    _scrollToEnd();
+
+    if (shownNow && assistant.messages.isNotEmpty) {
+      _followAnswer(assistant.messages.last.text);
+    }
   }
 
   /// Acts on what the assistant just said.
@@ -313,7 +397,15 @@ class _AssistantPanelState extends State<AssistantPanel> {
 
     return Drawer(
       width: MediaQuery.of(context).size.width * 0.92,
-      child: SafeArea(
+      // A drawer is not resized by the keyboard the way a Scaffold body
+      // is, so lift the whole panel above it by hand - otherwise the
+      // text box sits underneath the keyboard.
+      child: AnimatedPadding(
+        duration: const Duration(milliseconds: 100),
+        padding: EdgeInsets.only(
+          bottom: MediaQuery.of(context).viewInsets.bottom,
+        ),
+        child: SafeArea(
         child: Column(
           children: <Widget>[
             // ------------------------------------------------- header
@@ -369,10 +461,28 @@ class _AssistantPanelState extends State<AssistantPanel> {
                           controller: _scroll,
                           padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                           itemCount: messages.length +
-                              (assistant.isThinking ? 1 : 0),
+                              (assistant.isThinking ||
+                                      assistant.isPaused ||
+                                      assistant.failedQuestion != null
+                                  ? 1
+                                  : 0),
                           itemBuilder: (BuildContext context, int index) {
                             if (index >= messages.length) {
-                              return const _Thinking();
+                              if (assistant.isPaused) {
+                                return const _PausedNote();
+                              }
+
+                              if (assistant.isThinking) {
+                                return const _Thinking();
+                              }
+
+                              return _FailedNote(
+                                message: assistant.error ??
+                                    "Couldn't get an answer. Please try again.",
+                                onRetry: () =>
+                                    _send(assistant.failedQuestion),
+                                onDismiss: assistant.dismissFailed,
+                              );
                             }
 
                             return _Bubble(
@@ -392,6 +502,7 @@ class _AssistantPanelState extends State<AssistantPanel> {
                   Expanded(
                     child: TextField(
                       controller: _controller,
+                      focusNode: _focus,
                       minLines: 1,
                       maxLines: 4,
                       textCapitalization: TextCapitalization.sentences,
@@ -410,17 +521,33 @@ class _AssistantPanelState extends State<AssistantPanel> {
                     ),
                   ),
                   const SizedBox(width: 8),
+                  // While a reply is pending: Stop drops it, Pause holds it.
+                  // A stalled reply must never leave the person with no
+                  // way out but to close the panel.
+                  if (assistant.isThinking || assistant.isPaused) ...<Widget>[
+                    IconButton.outlined(
+                      tooltip: 'Stop',
+                      onPressed: () => assistant.cancelAsk(),
+                      icon: const Icon(Icons.stop, size: 18),
+                    ),
+                    const SizedBox(width: 4),
+                  ],
                   IconButton.filled(
-                    // While thinking this doubles as Cancel - a stalled
-                    // reply must never leave the person with no way out
-                    // but to close the panel.
-                    tooltip: assistant.isThinking ? 'Cancel' : null,
+                    tooltip: assistant.isThinking
+                        ? 'Pause'
+                        : assistant.isPaused
+                            ? 'Resume'
+                            : 'Send',
                     onPressed: assistant.isThinking
-                        ? () => assistant.cancelAsk()
-                        : () => _send(),
+                        ? () => assistant.pauseAsk()
+                        : assistant.isPaused
+                            ? _resume
+                            : () => _send(),
                     icon: assistant.isThinking
-                        ? const Icon(Icons.close, size: 18)
-                        : const Icon(Icons.send, size: 18),
+                        ? const Icon(Icons.pause, size: 18)
+                        : assistant.isPaused
+                            ? const Icon(Icons.play_arrow, size: 18)
+                            : const Icon(Icons.send, size: 18),
                   ),
                 ],
               ),
@@ -436,6 +563,7 @@ class _AssistantPanelState extends State<AssistantPanel> {
               ),
             ),
           ],
+        ),
         ),
       ),
     );
@@ -631,6 +759,98 @@ class _Bubble extends StatelessWidget {
                 label: Text('Take me to ${_label(destination)}'),
               ),
             ),
+        ],
+      ),
+    );
+  }
+}
+
+class _FailedNote extends StatelessWidget {
+  const _FailedNote({
+    required this.message,
+    required this.onRetry,
+    required this.onDismiss,
+  });
+
+  final String message;
+  final VoidCallback onRetry;
+  final VoidCallback onDismiss;
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Container(
+        padding: const EdgeInsets.fromLTRB(12, 10, 4, 4),
+        decoration: BoxDecoration(
+          color: theme.colorScheme.errorContainer,
+          borderRadius: BorderRadius.circular(12),
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: <Widget>[
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: <Widget>[
+                Icon(
+                  Icons.error_outline,
+                  size: 18,
+                  color: theme.colorScheme.onErrorContainer,
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    message,
+                    style: theme.textTheme.bodySmall?.copyWith(
+                      color: theme.colorScheme.onErrorContainer,
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            Row(
+              mainAxisAlignment: MainAxisAlignment.end,
+              children: <Widget>[
+                TextButton(
+                  onPressed: onDismiss,
+                  child: const Text('Dismiss'),
+                ),
+                TextButton.icon(
+                  onPressed: onRetry,
+                  icon: const Icon(Icons.refresh, size: 18),
+                  label: const Text('Retry'),
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _PausedNote extends StatelessWidget {
+  const _PausedNote();
+
+  @override
+  Widget build(BuildContext context) {
+    final ThemeData theme = Theme.of(context);
+
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 12),
+      child: Row(
+        children: <Widget>[
+          Icon(Icons.pause_circle_outline,
+              size: 18, color: theme.colorScheme.outline),
+          const SizedBox(width: 8),
+          Text(
+            'Paused - tap play to continue, or stop to drop it.',
+            style: theme.textTheme.bodySmall?.copyWith(
+              color: theme.colorScheme.outline,
+            ),
+          ),
         ],
       ),
     );

@@ -72,33 +72,38 @@ class TaskDetailProvider extends ChangeNotifier {
       return;
     }
 
+    // Show the task itself right away; the side panels fill in after.
+    _isLoading = false;
+    notifyListeners();
+
     // Side panels are optional - a failure there must not blank the screen.
-    try {
-      _subtasks = await TaskService.getSubtasks(taskId);
-    } catch (_) {
-      _subtasks = <SubtaskModel>[];
-    }
+    // They are independent, so fetch them together instead of one by one.
+    final List<Object> panels = await Future.wait<Object>(<Future<Object>>[
+      _safe<List<SubtaskModel>>(
+          TaskService.getSubtasks(taskId), <SubtaskModel>[]),
+      _safe<List<CommentModel>>(
+          TaskService.getComments(taskId), <CommentModel>[]),
+      _safe<List<ActivityLogModel>>(
+          TaskService.getActivityLogs(taskId: taskId), <ActivityLogModel>[]),
+      _safe<List<AttachmentModel>>(
+          AttachmentService.getForTask(taskId), <AttachmentModel>[]),
+    ]);
 
-    try {
-      _comments = await TaskService.getComments(taskId);
-    } catch (_) {
-      _comments = <CommentModel>[];
-    }
-
-    try {
-      _activity = await TaskService.getActivityLogs(taskId: taskId);
-    } catch (_) {
-      _activity = <ActivityLogModel>[];
-    }
-
-    try {
-      _attachments = await AttachmentService.getForTask(taskId);
-    } catch (_) {
-      _attachments = <AttachmentModel>[];
-    }
+    _subtasks = panels[0] as List<SubtaskModel>;
+    _comments = panels[1] as List<CommentModel>;
+    _activity = panels[2] as List<ActivityLogModel>;
+    _attachments = panels[3] as List<AttachmentModel>;
 
     _isLoading = false;
     notifyListeners();
+  }
+
+  Future<T> _safe<T extends Object>(Future<T> future, T fallback) async {
+    try {
+      return await future;
+    } catch (_) {
+      return fallback;
+    }
   }
 
   Future<void> refresh() => load(silent: _task != null);

@@ -10,6 +10,7 @@ import '../../providers/auth_provider.dart';
 import '../../providers/discussion_provider.dart';
 import '../../widgets/admin/admin_widgets.dart';
 import '../../widgets/admin/async_view.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 /// One conversation per project, for the things that belong to the whole
 /// project rather than to a single task.
@@ -163,7 +164,7 @@ class _DiscussionViewState extends State<_DiscussionView> {
               emptyMessage:
                   'Use this for anything about the project as a whole - '
                   'a decision, a call, a file the team needs.',
-              child: RefreshIndicator(
+              child: AppRefreshIndicator(
                 onRefresh: discussion.refresh,
                 child: ListView.builder(
                   controller: _scroll,

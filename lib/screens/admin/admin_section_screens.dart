@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../../widgets/auto_hide_fab.dart';
 import '../manager/task_actions.dart';
 import 'tabs/admin_tasks_tab.dart';
 import 'tabs/admin_teams_tab.dart';
@@ -27,10 +28,11 @@ class AdminUsersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return FabScrollHost(
+      builder: (_, FabVisibility fab) => Scaffold(
       appBar: AppBar(title: const Text('Users')),
       body: const AdminUsersTab(),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AutoHideFab.wrap(fab, FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).push<bool>(
           MaterialPageRoute<bool>(
             builder: (_) => const UserFormScreen(),
@@ -38,7 +40,8 @@ class AdminUsersScreen extends StatelessWidget {
         ),
         icon: const Icon(Icons.person_add_alt),
         label: const Text('New user'),
-      ),
+      )),
+    ),
     );
   }
 }
@@ -50,10 +53,11 @@ class AdminTeamsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return FabScrollHost(
+      builder: (_, FabVisibility fab) => Scaffold(
       appBar: AppBar(title: const Text('Teams')),
       body: const AdminTeamsTab(),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AutoHideFab.wrap(fab, FloatingActionButton.extended(
         onPressed: () => Navigator.of(context).push<bool>(
           MaterialPageRoute<bool>(
             builder: (_) => const TeamFormScreen(),
@@ -61,7 +65,8 @@ class AdminTeamsScreen extends StatelessWidget {
         ),
         icon: const Icon(Icons.group_add_outlined),
         label: const Text('New team'),
-      ),
+      )),
+    ),
     );
   }
 }
@@ -73,14 +78,16 @@ class AdminTasksScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return FabScrollHost(
+      builder: (_, FabVisibility fab) => Scaffold(
       appBar: AppBar(title: const Text('Tasks')),
       body: const AdminTasksTab(),
-      floatingActionButton: FloatingActionButton.extended(
+      floatingActionButton: AutoHideFab.wrap(fab, FloatingActionButton.extended(
         onPressed: () => TaskActions.create(context),
         icon: const Icon(Icons.add),
         label: const Text('New task'),
-      ),
+      )),
+    ),
     );
   }
 }

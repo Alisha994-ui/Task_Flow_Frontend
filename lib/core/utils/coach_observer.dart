@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 
 import '../../providers/coach_provider.dart';
 
@@ -39,9 +40,48 @@ class CoachObserver extends NavigatorObserver {
     coach.next();
   }
 
+  /// Navigator callbacks can fire mid-build; telling the overlay after
+  /// the frame keeps it out of "setState during build" trouble. One
+  /// frame of overlap with an opening menu is not visible.
+  void _later(VoidCallback action) {
+    SchedulerBinding.instance.addPostFrameCallback((_) => action());
+    SchedulerBinding.instance.ensureVisualUpdate();
+  }
+
+  /// The first screen the current tour opened (the form, usually), and
+  /// which tour it belongs to.
+  ///
+  /// When that screen closes the tour is over either way: the form was
+  /// saved, or the person backed out of it. Before this, saving a form
+  /// left the last bubble ("press Create") hanging over the list behind
+  /// it, pointing at a button that no longer existed.
+  Route<dynamic>? _tourRoute;
+  int _tourGeneration = -1;
+
+  bool _isTourRoute(Route<dynamic> route) {
+    return identical(route, _tourRoute) &&
+        coach.isActive &&
+        coach.generation == _tourGeneration;
+  }
+
+  void _endTour() {
+    _tourRoute = null;
+    _tourGeneration = -1;
+    _later(coach.stop);
+  }
+
   @override
   void didPush(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is PopupRoute) {
+      _later(coach.popupOpened);
+    }
+
     if (coach.isActive && _counts(route)) {
+      if (coach.generation != _tourGeneration) {
+        _tourRoute = route;
+        _tourGeneration = coach.generation;
+      }
+
       _advance();
     }
 
@@ -50,13 +90,45 @@ class CoachObserver extends NavigatorObserver {
 
   @override
   void didPop(Route<dynamic> route, Route<dynamic>? previousRoute) {
-    // Only count coming back from a screen the walkthrough sent them
-    // to. A pop while the step still points at something on the form -
-    // a date picker closing, say - is not progress.
-    if (coach.isActive && _counts(route) && coach.target == null) {
+    if (route is PopupRoute) {
+      _later(coach.popupClosed);
+    }
+
+    if (_isTourRoute(route)) {
+      _endTour();
+    } else if (coach.isActive && _counts(route) && coach.target == null) {
+      // Only count coming back from a screen the walkthrough sent them
+      // to. A pop while the step still points at something on the form
+      // - a date picker closing, say - is not progress.
       _advance();
     }
 
     super.didPop(route, previousRoute);
+  }
+
+  @override
+  void didRemove(Route<dynamic> route, Route<dynamic>? previousRoute) {
+    if (route is PopupRoute) {
+      _later(coach.popupClosed);
+    }
+
+    if (_isTourRoute(route)) {
+      _endTour();
+    }
+
+    super.didRemove(route, previousRoute);
+  }
+
+  @override
+  void didReplace({Route<dynamic>? newRoute, Route<dynamic>? oldRoute}) {
+    if (oldRoute is PopupRoute) {
+      _later(coach.popupClosed);
+    }
+
+    if (newRoute is PopupRoute) {
+      _later(coach.popupOpened);
+    }
+
+    super.didReplace(newRoute: newRoute, oldRoute: oldRoute);
   }
 }

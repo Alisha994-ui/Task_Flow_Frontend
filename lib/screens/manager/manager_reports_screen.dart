@@ -12,6 +12,7 @@ import '../../providers/team_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/admin/admin_widgets.dart';
 import 'task_detail_screen.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 /// Everything here is computed from the task list already in memory, so no
 /// extra endpoint is needed.
@@ -47,7 +48,7 @@ class ManagerReportsScreen extends StatelessWidget {
       appBar: AppBar(
         title: const Text('Reports'),
       ),
-      body: RefreshIndicator(
+      body: AppRefreshIndicator(
         onRefresh: tasks.refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),

@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../../core/constants/project_constants.dart';
 import '../../models/user_model.dart';
+import '../../providers/coach_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/admin/admin_widgets.dart';
 
@@ -21,6 +22,10 @@ class UserFormScreen extends StatefulWidget {
 
 class _UserFormScreenState extends State<UserFormScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  // Errors stay hidden until the first submit attempt; after that the form
+  // re-validates on every change, so an error clears as soon as the field is filled.
+  AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
   late final TextEditingController _usernameController;
   late final TextEditingController _firstNameController;
@@ -100,6 +105,8 @@ class _UserFormScreenState extends State<UserFormScreen> {
   }
 
   Future<void> _save() async {
+    setState(() => _autovalidateMode = AutovalidateMode.always);
+
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
@@ -145,6 +152,24 @@ class _UserFormScreenState extends State<UserFormScreen> {
       return;
     }
 
+    final bool passwordSent = _passwordController.text.isNotEmpty;
+    final bool? emailSent = users.lastEmailSent;
+    final String email = _emailController.text.trim();
+
+    if (!widget.isEdit || passwordSent) {
+      final String done = widget.isEdit ? 'Password updated' : 'Account created';
+
+      _snack(
+        emailSent == false
+            ? '$done, but the e-mail to $email could not be sent. '
+                'Share the details with the user directly.'
+            : '$done. Login details e-mailed to $email.',
+        isError: emailSent == false,
+      );
+    } else {
+      _snack('Account updated');
+    }
+
     Navigator.of(context).pop(true);
   }
 
@@ -157,14 +182,17 @@ class _UserFormScreenState extends State<UserFormScreen> {
       isDirty: () => _isDirty,
       child: Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => DiscardGuard.handleBack(context),
-      ),
+        leading: Builder(
+          builder: (BuildContext guardContext) => IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => DiscardGuard.handleBack(guardContext),
+          ),
+        ),
       title: Text(widget.isEdit ? 'Edit user' : 'New user'),
     ),
       body: Form(
         key: _formKey,
+        autovalidateMode: _autovalidateMode,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: <Widget>[
@@ -172,6 +200,8 @@ class _UserFormScreenState extends State<UserFormScreen> {
               name: 'user_username',
               child: TextFormField(
                 controller: _usernameController,
+                autocorrect: false,
+                enableSuggestions: false,
                 decoration: const InputDecoration(
                   labelText: 'Username',
                   border: OutlineInputBorder(),
@@ -223,6 +253,8 @@ class _UserFormScreenState extends State<UserFormScreen> {
               child: TextFormField(
                 controller: _emailController,
                 keyboardType: TextInputType.emailAddress,
+                autocorrect: false,
+                enableSuggestions: false,
                 decoration: const InputDecoration(
                   labelText: 'Email',
                   border: OutlineInputBorder(),
@@ -282,6 +314,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
                 onChanged: (String? value) {
                   if (value != null) {
                     setState(() => _role = value);
+                    context.read<CoachProvider>().done('user_role');
                   }
                 },
               ),
@@ -292,12 +325,19 @@ class _UserFormScreenState extends State<UserFormScreen> {
               child: TextFormField(
                 controller: _passwordController,
                 obscureText: !_showPassword,
+                // With the eye icon on, Android keyboards otherwise
+                // autocorrect / capitalise / append a space after a
+                // suggestion - the saved password then differs from the
+                // one typed at sign-in (BUG-28).
+                autocorrect: false,
+                enableSuggestions: false,
+                keyboardType: TextInputType.visiblePassword,
                 decoration: InputDecoration(
                   labelText: widget.isEdit ? 'New password' : 'Password',
                   border: const OutlineInputBorder(),
                   helperText: widget.isEdit
-                      ? 'Leave empty to keep the current password'
-                      : 'At least 8 characters',
+                      ? 'Leave empty to keep it. A new one is e-mailed to the user.'
+                      : 'At least 8 characters. E-mailed to the user.',
                   suffixIcon: IconButton(
                     icon: Icon(
                       _showPassword
@@ -320,6 +360,10 @@ class _UserFormScreenState extends State<UserFormScreen> {
                     return 'Set a password';
                   }
   
+                  if (text != text.trim()) {
+                    return 'Remove the space at the start or end';
+                  }
+
                   if (text.length < 8) {
                     return 'Use at least 8 characters';
                   }
@@ -359,7 +403,9 @@ class _UserFormScreenState extends State<UserFormScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: FilledButton.icon(
+          child: CoachTarget(
+            name: 'user_save',
+            child: FilledButton.icon(
             onPressed: users.isSaving ? null : _save,
             icon: users.isSaving
                 ? const SizedBox(
@@ -372,6 +418,7 @@ class _UserFormScreenState extends State<UserFormScreen> {
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
             ),
+          ),
           ),
         ),
       ),

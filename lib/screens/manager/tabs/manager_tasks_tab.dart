@@ -18,6 +18,7 @@ import '../../../widgets/admin/async_view.dart';
 import '../../../widgets/manager/task_tile.dart';
 import '../task_actions.dart';
 import '../task_detail_screen.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 class ManagerTasksTab extends StatefulWidget {
   const ManagerTasksTab({super.key});
@@ -294,7 +295,7 @@ class _ManagerTasksTabState extends State<ManagerTasksTab> {
                         )
                       : null,
 
-                  child: RefreshIndicator(
+                  child: AppRefreshIndicator(
                     onRefresh: () => refreshWithFeedback(
                       context,
                       tasks.refresh,

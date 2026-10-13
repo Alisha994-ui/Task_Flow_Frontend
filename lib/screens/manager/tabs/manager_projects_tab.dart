@@ -8,6 +8,7 @@ import '../../../providers/project_provider.dart';
 import '../../../widgets/admin/async_view.dart';
 import '../../../widgets/manager/manager_project_card.dart';
 import '../manager_project_detail_screen.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 class ManagerProjectsTab extends StatefulWidget {
   const ManagerProjectsTab({super.key});
@@ -156,7 +157,7 @@ class _ManagerProjectsTabState
                         const Text('Clear filters'),
                   )
                 : null,
-            child: RefreshIndicator(
+            child: AppRefreshIndicator(
               onRefresh: projects.refresh,
               child: ListView.separated(
                 physics:

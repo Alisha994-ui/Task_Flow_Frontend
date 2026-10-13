@@ -24,6 +24,7 @@ import 'task_actions.dart';
 import '../../widgets/admin/async_view.dart';
 import '../../widgets/manager/task_tile.dart';
 import 'task_form_screen.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 class TaskDetailScreen extends StatelessWidget {
   const TaskDetailScreen({
@@ -123,11 +124,11 @@ class _TaskDetailView extends StatelessWidget {
     final TeamProvider teams = context.read<TeamProvider>();
     final ProjectProvider projects = context.read<ProjectProvider>();
 
+    // Only the project's team (members and lead) can be assigned.
     final TeamModel? team = teams.byId(projects.byId(task.project)?.team);
-    final bool teamHasNoMembers = team == null || team.members.isEmpty;
 
-    final List<UserModel> candidates = teamHasNoMembers
-        ? users.allUsers
+    final List<UserModel> candidates = team == null
+        ? const <UserModel>[]
         : users.allUsers
             .where((UserModel u) =>
                 team.members.contains(u.id) || team.teamLead == u.id)
@@ -137,9 +138,11 @@ class _TaskDetailView extends StatelessWidget {
       context,
       candidates: candidates,
       current: task.assignee,
-      scopeNote: teamHasNoMembers
-          ? "This project's team has nobody in it yet - showing everyone."
-          : null,
+      scopeNote: team == null
+          ? 'This project has no team yet.'
+          : candidates.isEmpty
+              ? "This project's team has no members yet."
+              : null,
     );
 
     if (picked == null) {
@@ -150,13 +153,15 @@ class _TaskDetailView extends StatelessWidget {
     final bool ok = await tasks.assignTo(task.id, userId);
 
     if (ok) {
-      // Belt and braces: apply the change locally right away rather
-      // than waiting on whatever the server's response contained - the
-      // list behind this screen must never show the old assignee until
-      // a manual pull-to-refresh.
-      tasks.replaceLocally(
-        task.copyWith(assignee: userId, clearAssignee: userId == null),
-      );
+      // assignTo() already stored the server's copy; patch locally only
+      // if it still shows the old assignee, from the freshest copy.
+      final TaskModel current = tasks.byId(task.id) ?? task;
+
+      if (current.assignee != userId) {
+        tasks.replaceLocally(
+          current.copyWith(assignee: userId, clearAssignee: userId == null),
+        );
+      }
     }
 
     if (!context.mounted) {
@@ -182,9 +187,15 @@ class _TaskDetailView extends StatelessWidget {
   Future<void> _edit(BuildContext context, TaskModel task) async {
     final TaskDetailProvider detail = context.read<TaskDetailProvider>();
 
+    FocusScope.of(context).unfocus();
+
     final bool? saved = await Navigator.of(context).push<bool>(
       MaterialPageRoute<bool>(builder: (_) => TaskFormScreen(task: task)),
     );
+
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
 
     if (saved == true) {
       await detail.refresh();
@@ -274,7 +285,7 @@ class _OverviewTab extends StatelessWidget {
     final bool timerRunning =
         timers.runningLogs.any((TimeLogModel l) => l.task == task.id);
 
-    return RefreshIndicator(
+    return AppRefreshIndicator(
       onRefresh: detail.refresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -853,7 +864,7 @@ class _ActivityTab extends StatelessWidget {
       );
     }
 
-    return RefreshIndicator(
+    return AppRefreshIndicator(
       onRefresh: detail.reloadActivity,
       child: ListView.builder(
         physics: const AlwaysScrollableScrollPhysics(),

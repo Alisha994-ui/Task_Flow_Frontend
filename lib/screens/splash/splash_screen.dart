@@ -1,3 +1,4 @@
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -15,13 +16,14 @@ class _SplashScreenState extends State<SplashScreen> {
   @override
   void initState() {
     super.initState();
-
     _restoreSession();
   }
 
-  Future<void> _restoreSession() async {
-    final authProvider = context.read<AuthProvider>();
+  
+Future<void> _restoreSession() async {
+  final authProvider = context.read<AuthProvider>();
 
+  try {
     final isAuthenticated = await authProvider.restoreSession();
 
     if (!mounted) return;
@@ -31,40 +33,49 @@ class _SplashScreenState extends State<SplashScreen> {
         authProvider.role ?? '',
       );
 
-      Navigator.pushReplacementNamed(
-        context,
-        route,
-      );
+      Navigator.pushReplacementNamed(context, route);
     } else {
       Navigator.pushReplacementNamed(
         context,
         AppRoutes.login,
       );
     }
+  } catch (_) {
+    if (!mounted) return;
+
+    Navigator.pushReplacementNamed(
+      context,
+      AppRoutes.login,
+    );
   }
+}
+
 
   @override
   Widget build(BuildContext context) {
-    return const Scaffold(
+    return Scaffold(
       body: Center(
-        child: Column(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
-            Icon(
-              Icons.task_alt_rounded,
-              size: 72,
-            ),
-            SizedBox(height: 20),
-            Text(
-              'TaskFlow',
-              style: TextStyle(
-                fontSize: 28,
-                fontWeight: FontWeight.bold,
+        child: Padding(
+          padding: const EdgeInsets.all(24),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const Icon(
+                Icons.task_alt_rounded,
+                size: 72,
               ),
-            ),
-            SizedBox(height: 24),
-            CircularProgressIndicator(),
-          ],
+              const SizedBox(height: 20),
+              const Text(
+                'TaskFlow',
+                style: TextStyle(
+                  fontSize: 28,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+              const SizedBox(height: 24),
+              const CircularProgressIndicator(),
+            ],
+          ),
         ),
       ),
     );

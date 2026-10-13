@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/auto_hide_fab.dart';
 import '../../core/coach/coach_target.dart';
 import 'package:provider/provider.dart';
 import '../../screens/assistant/assistant_panel.dart';
@@ -174,7 +176,8 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return FabScrollHost(
+      builder: (_, FabVisibility fab) => Scaffold(
       key: _scaffoldKey,
       endDrawer: AssistantPanel(
         destinations: const <String, int>{
@@ -223,7 +226,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           ),
         ],
       ),
-      floatingActionButton: _buildFab(),
+      floatingActionButton: AutoHideFab.wrap(fab, _buildFab(), resetKey: _index),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (int value) => setState(() => _index = value),
@@ -255,6 +258,7 @@ class _AdminPanelScreenState extends State<AdminPanelScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 }

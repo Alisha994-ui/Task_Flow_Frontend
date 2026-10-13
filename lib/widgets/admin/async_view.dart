@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 
+import '../../core/network/api_client.dart';
+
 /// Wraps a screen body so loading, failure and empty states look the same
 /// everywhere in the admin panel.
 class AsyncView extends StatelessWidget {
@@ -28,21 +30,36 @@ class AsyncView extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    if (isLoading) {
-      return const Center(child: CircularProgressIndicator());
+    // Show loading only when no existing data is available.
+    if (isLoading && isEmpty) {
+      return const Center(
+        child: CircularProgressIndicator(),
+      );
     }
 
-    if (error != null) {
-      return _ErrorState(message: error!, onRetry: onRetry);
+    // If loading fails but data already exists, keep showing the data.
+    if (error != null && !isEmpty) {
+      return child;
     }
 
+    // Show an error only if no data is available.
+    if (error != null && isEmpty) {
+      return _ErrorState(
+        message: error!,
+        onRetry: onRetry,
+      );
+    }
+
+    // Show the empty state when loading succeeded but there is no data.
     if (isEmpty) {
       return RefreshIndicator(
         onRefresh: onRetry,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),
           children: <Widget>[
-            SizedBox(height: MediaQuery.of(context).size.height * 0.18),
+            SizedBox(
+              height: MediaQuery.of(context).size.height * 0.18,
+            ),
             _EmptyState(
               icon: emptyIcon,
               title: emptyTitle,
@@ -54,12 +71,16 @@ class AsyncView extends StatelessWidget {
       );
     }
 
+    // Display the existing screen content.
     return child;
   }
 }
 
 class _ErrorState extends StatelessWidget {
-  const _ErrorState({required this.message, required this.onRetry});
+  const _ErrorState({
+    required this.message,
+    required this.onRetry,
+  });
 
   final String message;
   final Future<void> Function() onRetry;
@@ -67,6 +88,8 @@ class _ErrorState extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final ThemeData theme = Theme.of(context);
+    final bool offline = ApiClient.offline.value;
+    final bool serverIssue = offline && ApiClient.deviceOnline.value;
 
     return Center(
       child: Padding(
@@ -88,13 +111,23 @@ class _ErrorState extends StatelessWidget {
             ),
             const SizedBox(height: 14),
             Text(
-              'Could not load this data',
+              serverIssue
+                  ? "Can't reach the server"
+                  : offline
+                      ? "You're offline"
+                      : 'Could not load this data',
               style: theme.textTheme.titleMedium,
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 6),
             Text(
-              message,
+              serverIssue
+                  ? 'Make sure the server is running and this phone is on '
+                      'the same Wi-Fi, then tap Try again.'
+                  : offline
+                      ? 'Nothing is saved for this page yet. Open it once '
+                          'while online, then it will work offline too.'
+                      : message,
               style: theme.textTheme.bodySmall?.copyWith(
                 color: theme.colorScheme.onSurfaceVariant,
               ),
@@ -143,10 +176,17 @@ class _EmptyState extends StatelessWidget {
                   .withValues(alpha: 0.6),
               shape: BoxShape.circle,
             ),
-            child: Icon(icon, size: 24, color: theme.colorScheme.outline),
+            child: Icon(
+              icon,
+              size: 24,
+              color: theme.colorScheme.outline,
+            ),
           ),
           const SizedBox(height: 14),
-          Text(title, style: theme.textTheme.titleMedium),
+          Text(
+            title,
+            style: theme.textTheme.titleMedium,
+          ),
           const SizedBox(height: 6),
           Text(
             message,

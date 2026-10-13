@@ -1,7 +1,10 @@
+
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 
+import 'core/network/api_client.dart';
+import 'core/network/connectivity_watcher.dart';
 import 'core/push/push_service.dart';
 import 'core/utils/coach_observer.dart';
 import 'core/theme/app_theme.dart';
@@ -18,31 +21,85 @@ import 'providers/team_provider.dart';
 import 'providers/time_log_provider.dart';
 import 'providers/user_provider.dart';
 import 'routes/app_routes.dart';
+import 'screens/profile/profile_screen.dart' show signOut;
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  // Firebase has to be up before the first frame, otherwise a push that
-  // launched the app is lost.
+  // BUG-01: a release build must be built with an https API address
+  // (--dart-define=API_BASE_URL=https://...). Fail loudly, not silently.
+  if (!ApiClient.isConfigured) {
+    runApp(const _MisconfiguredBuildApp());
+    return;
+  }
+
   await PushService.init();
 
-  // This is a phone-first business app with no landscape layouts; in
-  // landscape the keyboard alone can take up most of the short screen
-  // height (see sign-in). Locking portrait is simpler and more reliable
-  // than trying to make every screen reflow for landscape.
-  await SystemChrome.setPreferredOrientations(<DeviceOrientation>[
-    DeviceOrientation.portraitUp,
-    DeviceOrientation.portraitDown,
-  ]);
+  ConnectivityWatcher.start();
+
+  await SystemChrome.setPreferredOrientations(
+    <DeviceOrientation>[
+      DeviceOrientation.portraitUp,
+      DeviceOrientation.portraitDown,
+    ],
+  );
 
   runApp(
     MultiProvider(
       providers: [
-        ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+        ChangeNotifierProvider<AuthProvider>(
+          create: (_) {
+            final authProvider = AuthProvider();
+
+            ApiClient.onConnectionRestored =
+                authProvider.clearRestoredFromCache;
+
+            // The server rejected the saved session for real (not just a
+            // dropped connection): sign out and go to the login screen
+            // instead of leaving every screen showing errors.
+            bool handlingExpiry = false;
+
+            ApiClient.onSessionExpired = () async {
+              final BuildContext? ctx = appNavigatorKey.currentContext;
+
+              if (handlingExpiry ||
+                  ctx == null ||
+                  !authProvider.isAuthenticated) {
+                return;
+              }
+
+              handlingExpiry = true;
+
+              try {
+                await signOut(ctx);
+
+                ApiClient.sessionExpired = false;
+
+                if (ctx.mounted) {
+                  ScaffoldMessenger.of(ctx)
+                    ..hideCurrentSnackBar()
+                    ..showSnackBar(
+                      const SnackBar(
+                        content: Text(
+                          'Your session has expired. Please sign in again.',
+                        ),
+                      ),
+                    );
+                }
+              } finally {
+                handlingExpiry = false;
+              }
+            };
+
+            return authProvider;
+          },
+        ),
         ChangeNotifierProvider<AssistantProvider>(
           create: (_) => AssistantProvider(),
         ),
-        ChangeNotifierProvider<CoachProvider>(create: (_) => CoachProvider()),
+        ChangeNotifierProvider<CoachProvider>(
+          create: (_) => CoachProvider(),
+        ),
         ChangeNotifierProvider<AdminDashboardProvider>(
           create: (_) => AdminDashboardProvider(),
         ),
@@ -52,12 +109,18 @@ void main() async {
         ChangeNotifierProvider<ManagerProvider>(
           create: (_) => ManagerProvider(),
         ),
-        ChangeNotifierProvider<TaskProvider>(create: (_) => TaskProvider()),
-        ChangeNotifierProvider<UserProvider>(create: (_) => UserProvider()),
+        ChangeNotifierProvider<TaskProvider>(
+          create: (_) => TaskProvider(),
+        ),
+        ChangeNotifierProvider<UserProvider>(
+          create: (_) => UserProvider(),
+        ),
         ChangeNotifierProvider<NotificationProvider>(
           create: (_) => NotificationProvider(),
         ),
-        ChangeNotifierProvider<TeamProvider>(create: (_) => TeamProvider()),
+        ChangeNotifierProvider<TeamProvider>(
+          create: (_) => TeamProvider(),
+        ),
         ChangeNotifierProvider<TimeLogProvider>(
           create: (_) => TimeLogProvider(),
         ),
@@ -65,6 +128,33 @@ void main() async {
       child: const TaskFlowApp(),
     ),
   );
+}
+
+class _MisconfiguredBuildApp extends StatelessWidget {
+  const _MisconfiguredBuildApp();
+
+  @override
+  Widget build(BuildContext context) {
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: AppTheme.light,
+      darkTheme: AppTheme.dark,
+      home: const Scaffold(
+        body: SafeArea(
+          child: Padding(
+            padding: EdgeInsets.all(24),
+            child: Center(
+              child: Text(
+                'This build has no secure server address.\n\n'
+                'Rebuild with --dart-define=API_BASE_URL=https://<your-api>/api',
+                textAlign: TextAlign.center,
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
 }
 
 class TaskFlowApp extends StatelessWidget {
@@ -76,18 +166,9 @@ class TaskFlowApp extends StatelessWidget {
       title: 'TaskFlow',
       debugShowCheckedModeBanner: false,
       navigatorKey: appNavigatorKey,
-
-      // Opening a screen moves the walkthrough along by itself, so a
-      // step that says "tap the + button" does not also need a tap on
-      // Next.
       navigatorObservers: <NavigatorObserver>[
         CoachObserver(context.read<CoachProvider>()),
       ],
-
-      // The walkthrough draws over every route, not inside one: it
-      // dims the screen, lights up the control a step is about, and
-      // puts the bubble next to it. The dim layer ignores taps, so the
-      // real button underneath still works.
       builder: (BuildContext context, Widget? child) {
         return Stack(
           children: <Widget>[
@@ -96,7 +177,6 @@ class TaskFlowApp extends StatelessWidget {
           ],
         );
       },
-
       theme: AppTheme.light,
       darkTheme: AppTheme.dark,
       themeMode: ThemeMode.system,

@@ -5,6 +5,15 @@ import '../models/user_model.dart';
 class UserService {
   static const int _maxPages = 10;
 
+  /// Whether the server managed to e-mail the login details on the last
+  /// create / password change (null when no e-mail was involved).
+  static bool? lastEmailSent;
+
+  static bool? _emailFlag(Map<String, dynamic> response) {
+    final dynamic value = response['email_sent'];
+    return value is bool ? value : null;
+  }
+
   static Future<List<UserModel>> getUsers() async {
     final List<Map<String, dynamic>> rows = <Map<String, dynamic>>[];
 
@@ -54,6 +63,8 @@ class UserService {
       },
     );
 
+    lastEmailSent = _emailFlag(response);
+
     return UserModel.fromJson(Map<String, dynamic>.from(response));
   }
 
@@ -83,6 +94,8 @@ class UserService {
 
     final response = await ApiClient.patch('/users/$id/', body: body);
 
+    lastEmailSent = _emailFlag(response);
+
     return UserModel.fromJson(Map<String, dynamic>.from(response));
   }
 
@@ -93,6 +106,22 @@ class UserService {
     required bool active,
   }) async {
     return updateUser(id: id, status: active);
+  }
+
+  /// Admin reset. Empty [password] = the server generates one. Either way
+  /// the user is e-mailed their username and new password. The response
+  /// carries `detail`, `email_sent` and - only if the e-mail failed for a
+  /// generated password - `password`.
+  static Future<Map<String, dynamic>> resetPassword(
+    int id, {
+    String? password,
+  }) async {
+    return ApiClient.post(
+      '/users/$id/reset-password/',
+      body: <String, dynamic>{
+        if (password != null && password.isNotEmpty) 'password': password,
+      },
+    );
   }
 
   static Future<void> deleteUser(int id) async {

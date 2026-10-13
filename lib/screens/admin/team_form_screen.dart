@@ -6,6 +6,7 @@ import '../../core/constants/project_constants.dart';
 import '../../models/team_member_model.dart';
 import '../../models/team_model.dart';
 import '../../models/user_model.dart';
+import '../../providers/coach_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../providers/user_provider.dart';
 import '../../widgets/admin/admin_widgets.dart';
@@ -28,6 +29,10 @@ class TeamFormScreen extends StatefulWidget {
 
 class _TeamFormScreenState extends State<TeamFormScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  // Errors stay hidden until the first submit attempt; after that the form
+  // re-validates on every change, so an error clears as soon as the field is filled.
+  AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
@@ -108,6 +113,8 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
   }
 
   Future<void> _save({bool closeAfter = true}) async {
+    setState(() => _autovalidateMode = AutovalidateMode.always);
+
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
@@ -153,6 +160,10 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
     setState(() => _savedTeamId = result!.id);
     _markClean();
     _snack('Team saved. Add its members below.');
+
+    // Only now - after a save that worked - does the tour move on to
+    // adding people. A failed save (empty name) keeps it on this step.
+    context.read<CoachProvider>().done('team_save_and_members');
   }
 
   Future<void> _addMember() async {
@@ -287,14 +298,17 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
       isDirty: () => _isDirty,
       child: Scaffold(
       appBar: AppBar(
-       leading: IconButton(
-       icon: const Icon(Icons.arrow_back),
-       onPressed: () => DiscardGuard.handleBack(context),
-       ),
+       leading: Builder(
+          builder: (BuildContext guardContext) => IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => DiscardGuard.handleBack(guardContext),
+          ),
+        ),
        title: Text(widget.isEdit ? 'Edit team' : 'New team'),
     ),
       body: Form(
         key: _formKey,
+        autovalidateMode: _autovalidateMode,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: <Widget>[
@@ -354,7 +368,10 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
                     ),
                   ),
                 ],
-                onChanged: (int? value) => setState(() => _teamLead = value),
+                onChanged: (int? value) {
+                  setState(() => _teamLead = value);
+                  context.read<CoachProvider>().done('team_lead');
+                },
               ),
             ),
             const SizedBox(height: 8),
@@ -395,10 +412,13 @@ class _TeamFormScreenState extends State<TeamFormScreen> {
                 subtitle: members.isEmpty
                     ? 'Nobody on this team yet'
                     : '${members.length} on the team',
-                trailing: FilledButton.tonalIcon(
-                  onPressed: teams.isSaving ? null : _addMember,
-                  icon: const Icon(Icons.person_add_alt, size: 18),
-                  label: const Text('Add'),
+                trailing: CoachTarget(
+                  name: 'team_add_member',
+                  child: FilledButton.tonalIcon(
+                    onPressed: teams.isSaving ? null : _addMember,
+                    icon: const Icon(Icons.person_add_alt, size: 18),
+                    label: const Text('Add'),
+                  ),
                 ),
               ),
               const SizedBox(height: 8),

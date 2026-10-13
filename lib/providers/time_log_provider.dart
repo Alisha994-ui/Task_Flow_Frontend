@@ -1,3 +1,4 @@
+import '../core/network/api_client.dart';
 import '../core/utils/errors.dart';
 import 'package:flutter/foundation.dart';
 
@@ -171,7 +172,9 @@ class TimeLogProvider extends ChangeNotifier {
     } catch (e) {
       _error = friendlyError(e);
 
-      return 'Could not start the timer.';
+      return e is NetworkException
+          ? e.message
+          : 'Could not start the timer.';
     } finally {
       _isBusy = false;
       notifyListeners();
@@ -197,7 +200,9 @@ class TimeLogProvider extends ChangeNotifier {
     } catch (e) {
       _error = friendlyError(e);
 
-      return 'Could not stop the timer.';
+      return e is NetworkException
+          ? e.message
+          : 'Could not stop the timer.';
     } finally {
       _isBusy = false;
       notifyListeners();

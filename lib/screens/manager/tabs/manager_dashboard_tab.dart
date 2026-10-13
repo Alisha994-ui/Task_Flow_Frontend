@@ -17,6 +17,7 @@ import '../../../widgets/manager/task_tile.dart';
 import '../manager_project_detail_screen.dart';
 import '../task_actions.dart';
 import '../task_detail_screen.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 /// Answers one question: what needs the manager's attention today?
 ///
@@ -55,7 +56,7 @@ class ManagerDashboardTab extends StatelessWidget {
       error: projects.allProjects.isEmpty ? projects.error : null,
       isEmpty: false,
       onRetry: projects.refresh,
-      child: RefreshIndicator(
+      child: AppRefreshIndicator(
         onRefresh: () async {
           await Future.wait<void>(<Future<void>>[
             projects.refresh(),

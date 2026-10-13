@@ -86,9 +86,10 @@ class _CoachOverlayState extends State<CoachOverlay> {
   Widget build(BuildContext context) {
     final CoachProvider coach = context.watch<CoachProvider>();
 
-    _ensurePolling(coach.isActive);
+    // Nothing to measure while a menu or dialog covers the page.
+    _ensurePolling(coach.isActive && !coach.popupOpen);
 
-    if (!coach.isActive) {
+    if (!coach.isActive || coach.popupOpen) {
       return const SizedBox.shrink();
     }
 
@@ -96,7 +97,17 @@ class _CoachOverlayState extends State<CoachOverlay> {
     // 60ms for the next tick - otherwise every step flashes the strip
     // before the spotlight appears.
     if (coach.target != _for) {
-      WidgetsBinding.instance.addPostFrameCallback((_) => _measure());
+      final String? target = coach.target;
+
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        // Bring the control into view first; the polling picks up its
+        // new position as the scroll settles.
+        if (target != null) {
+          CoachTargets.reveal(target);
+        }
+
+        _measure();
+      });
     }
 
     final Rect? rect = (coach.target != null && coach.target == _for)
@@ -127,17 +138,31 @@ class _Spotlight extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final Size screen = MediaQuery.of(context).size;
-    final EdgeInsets safe = MediaQuery.of(context).padding;
+    final MediaQueryData media = MediaQuery.of(context);
+    final Size screen = media.size;
+    final EdgeInsets safe = media.padding;
+
+    // The keyboard is a system window above everything, this overlay
+    // included. Measuring room against the screen edge put the bubble -
+    // and its Next button - underneath the keyboard while somebody was
+    // typing the name it asked for.
+    final double bottomEdge =
+        screen.height - (media.viewInsets.bottom > safe.bottom
+            ? media.viewInsets.bottom
+            : safe.bottom);
 
     final RRect hole = RRect.fromRectAndRadius(
       rect.inflate(_pad),
       const Radius.circular(12),
     );
 
-    // Below the target if there is room, otherwise above it.
-    final double roomBelow = screen.height - rect.bottom - safe.bottom;
-    final bool below = roomBelow > 190;
+    // Below the target if there is room, otherwise above it, otherwise
+    // (tall target, keyboard up) pinned to the top of the screen.
+    const double bubbleRoom = 190;
+    final double roomBelow = bottomEdge - rect.bottom;
+    final double roomAbove = rect.top - safe.top;
+    final bool below = roomBelow > bubbleRoom;
+    final bool above = !below && roomAbove > bubbleRoom;
 
     return Stack(
       children: <Widget>[
@@ -153,15 +178,19 @@ class _Spotlight extends StatelessWidget {
         Positioned(
           left: 12,
           right: 12,
-          top: below ? rect.bottom + _pad + _gap : null,
-          bottom: below
-              ? null
-              : screen.height - rect.top + _pad + _gap,
+          top: below
+              ? rect.bottom + _pad + _gap
+              : above
+                  ? null
+                  : safe.top + 8,
+          bottom: above ? screen.height - rect.top + _pad + _gap : null,
           child: _Bubble(
             coach: coach,
             pointerX: rect.center.dx.clamp(32.0, screen.width - 32.0),
             pointsUp: below,
-            arrow: _arrow,
+            // No room either side: the bubble overlaps, so no arrow.
+            arrow: below || above ? _arrow : 0,
+            targetVisible: true,
           ),
         ),
       ],
@@ -206,12 +235,19 @@ class _Bubble extends StatelessWidget {
     required this.pointerX,
     required this.pointsUp,
     required this.arrow,
+    required this.targetVisible,
   });
 
   final CoachProvider coach;
   final double pointerX;
   final bool pointsUp;
   final double arrow;
+
+  /// The lit-up control is on screen. Together with
+  /// [CoachStep.waitsForTap] this hides Next: the real button moves the
+  /// tour on. If the button is not there (no projects yet, so no +),
+  /// Next stays so nobody is stuck.
+  final bool targetVisible;
 
   @override
   Widget build(BuildContext context) {
@@ -285,17 +321,32 @@ class _Bubble extends StatelessWidget {
                     onTap: coach.previous,
                   ),
                 const SizedBox(width: 4),
-                FilledButton(
-                  onPressed: coach.isLast ? coach.stop : coach.next,
-                  style: FilledButton.styleFrom(
-                    visualDensity: VisualDensity.compact,
+                if (targetVisible &&
+                    (coach.currentStep?.waitsForTap ?? false))
+                  Padding(
                     padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 6,
+                      horizontal: 6,
+                      vertical: 8,
                     ),
+                    child: Text(
+                      'Tap the highlighted button',
+                      style: theme.textTheme.labelSmall?.copyWith(
+                        color: theme.colorScheme.primary,
+                      ),
+                    ),
+                  )
+                else
+                  FilledButton(
+                    onPressed: coach.isLast ? coach.stop : coach.next,
+                    style: FilledButton.styleFrom(
+                      visualDensity: VisualDensity.compact,
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 14,
+                        vertical: 6,
+                      ),
+                    ),
+                    child: Text(coach.isLast ? 'Done' : 'Next'),
                   ),
-                  child: Text(coach.isLast ? 'Done' : 'Next'),
-                ),
               ],
             ),
           ],
@@ -391,12 +442,18 @@ class _Floating extends StatelessWidget {
         Positioned(
           left: 12,
           right: 12,
-          bottom: MediaQuery.of(context).padding.bottom + 20,
+          // Above the keyboard when it is up, as in _Spotlight.
+          bottom: (MediaQuery.of(context).viewInsets.bottom >
+                      MediaQuery.of(context).padding.bottom
+                  ? MediaQuery.of(context).viewInsets.bottom
+                  : MediaQuery.of(context).padding.bottom) +
+              20,
           child: _Bubble(
             coach: coach,
             pointerX: 0,
             pointsUp: false,
             arrow: 0,
+            targetVisible: false,
           ),
         ),
       ],

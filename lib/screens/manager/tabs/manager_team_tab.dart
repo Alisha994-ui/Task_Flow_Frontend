@@ -12,6 +12,7 @@ import '../../../providers/team_provider.dart';
 import '../../../providers/user_provider.dart';
 import '../../../widgets/admin/admin_widgets.dart';
 import '../../../widgets/admin/async_view.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 /// People the manager works with: every team attached to one of their
 /// projects, plus the teams they lead.
@@ -60,7 +61,7 @@ class ManagerTeamTab extends StatelessWidget {
       emptyTitle: 'No team yet',
       emptyMessage:
           'Once a project with a team is assigned to you, its members show up here.',
-      child: RefreshIndicator(
+      child: AppRefreshIndicator(
         onRefresh: teams.refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),

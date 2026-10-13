@@ -19,6 +19,7 @@ import '../../../widgets/manager/task_tile.dart';
 import '../../manager/task_actions.dart';
 import '../../manager/task_detail_screen.dart';
 import '../team_lead_member_detail_screen.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 /// Answers one question: what is my team doing right now, and what is
 /// slipping? Team and project detail live in their own tabs.
@@ -53,7 +54,7 @@ class TeamLeadDashboardTab extends StatelessWidget {
       error: tasks.allTasks.isEmpty ? tasks.error : null,
       isEmpty: false,
       onRetry: tasks.refresh,
-      child: RefreshIndicator(
+      child: AppRefreshIndicator(
         onRefresh: () async {
           await Future.wait<void>(<Future<void>>[
             tasks.refresh(),

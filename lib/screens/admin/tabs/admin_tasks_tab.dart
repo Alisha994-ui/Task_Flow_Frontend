@@ -15,6 +15,7 @@ import '../../../widgets/admin/async_view.dart';
 import '../../../widgets/manager/task_tile.dart';
 import '../../manager/task_actions.dart';
 import '../../manager/task_detail_screen.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 /// Every task in the system. The backend returns all of them for an ADMIN,
 /// so the filters here are the only narrowing.
@@ -275,7 +276,7 @@ class _AdminTasksTabState extends State<AdminTasksTab> {
                           child: const Text('Clear filters'),
                         )
                       : null,
-                  child: RefreshIndicator(
+                  child: AppRefreshIndicator(
                     onRefresh: () => refreshWithFeedback(
                       context,
                       tasks.refresh,

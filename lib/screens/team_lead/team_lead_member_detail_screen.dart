@@ -14,6 +14,7 @@ import '../../widgets/admin/admin_widgets.dart';
 import '../../widgets/manager/task_tile.dart';
 import '../manager/task_actions.dart';
 import '../manager/task_detail_screen.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 /// What one team member is carrying, built from the task list already
 /// loaded for this lead.
@@ -66,7 +67,7 @@ class _TeamLeadMemberDetailScreenState
 
     return Scaffold(
       appBar: AppBar(title: Text(name)),
-      body: RefreshIndicator(
+      body: AppRefreshIndicator(
         onRefresh: tasks.refresh,
         child: ListView(
           physics: const AlwaysScrollableScrollPhysics(),

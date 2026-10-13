@@ -20,6 +20,9 @@ class UserProvider extends ChangeNotifier {
 
   String? get error => _error;
 
+  /// See [UserService.lastEmailSent].
+  bool? get lastEmailSent => UserService.lastEmailSent;
+
   String get search => _search;
 
   String get roleFilter => _roleFilter;
@@ -209,6 +212,26 @@ class UserProvider extends ChangeNotifier {
   /// Switch an account on or off.
   Future<bool> setActive(int id, bool active) async {
     return await updateUser(id: id, status: active) != null;
+  }
+
+  Future<Map<String, dynamic>?> resetPassword(
+    int id, {
+    String? password,
+  }) async {
+    _isSaving = true;
+    _error = null;
+    notifyListeners();
+
+    try {
+      return await UserService.resetPassword(id, password: password);
+    } catch (e) {
+      _error = friendlyError(e);
+
+      return null;
+    } finally {
+      _isSaving = false;
+      notifyListeners();
+    }
   }
 
   Future<bool> deleteUser(int id) async {

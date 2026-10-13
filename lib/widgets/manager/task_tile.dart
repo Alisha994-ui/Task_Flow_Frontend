@@ -272,9 +272,28 @@ class TaskTile extends StatelessWidget {
   }
 }
 
+/// Runs [open] (a bottom sheet) without letting the keyboard come back.
+///
+/// When a modal route pops, Flutter re-focuses whatever had focus on the
+/// screen below - typically the list's search box - and the keyboard pops
+/// up over the list (BUG-11). Clear focus before opening and again right
+/// after the sheet closes.
+Future<T?> _sheetWithoutRefocus<T>(Future<T?> Function() open) async {
+  FocusManager.instance.primaryFocus?.unfocus();
+
+  final T? result = await open();
+
+  FocusManager.instance.primaryFocus?.unfocus();
+  WidgetsBinding.instance.addPostFrameCallback((_) {
+    FocusManager.instance.primaryFocus?.unfocus();
+  });
+
+  return result;
+}
+
 /// Bottom sheet that returns the chosen status, or null if dismissed.
 Future<String?> pickTaskStatus(BuildContext context, String current) {
-  return showModalBottomSheet<String>(
+  return _sheetWithoutRefocus<String>(() => showModalBottomSheet<String>(
     context: context,
     showDragHandle: true,
     builder: (BuildContext sheetContext) {
@@ -311,7 +330,7 @@ Future<String?> pickTaskStatus(BuildContext context, String current) {
         ),
       );
     },
-  );
+  ));
 }
 
 /// Bottom sheet for picking an assignee.
@@ -327,7 +346,7 @@ Future<int?> pickAssignee(
   // team rather than a deliberate fallback.
   String? scopeNote,
 }) {
-  return showModalBottomSheet<int>(
+  return _sheetWithoutRefocus<int>(() => showModalBottomSheet<int>(
     context: context,
     showDragHandle: true,
     isScrollControlled: true,
@@ -413,5 +432,5 @@ Future<int?> pickAssignee(
         ),
       );
     },
-  );
+  ));
 }

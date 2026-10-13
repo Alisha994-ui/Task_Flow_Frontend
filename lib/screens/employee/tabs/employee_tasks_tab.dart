@@ -12,6 +12,7 @@ import '../../../widgets/admin/async_view.dart';
 import '../../../widgets/manager/task_tile.dart';
 import '../../manager/task_actions.dart';
 import '../../manager/task_detail_screen.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 /// Everything assigned to the signed-in employee.
 class EmployeeTasksTab extends StatefulWidget {
@@ -197,7 +198,7 @@ class _EmployeeTasksTabState extends State<EmployeeTasksTab> {
                     child: const Text('Clear filters'),
                   )
                 : null,
-            child: RefreshIndicator(
+            child: AppRefreshIndicator(
               onRefresh: () => refreshWithFeedback(
                 context,
                 () => Future.wait<void>(<Future<void>>[

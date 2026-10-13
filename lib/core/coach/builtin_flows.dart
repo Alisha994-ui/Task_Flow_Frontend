@@ -16,7 +16,13 @@ class BuiltinFlow {
     required this.keywords,
     required this.roles,
     required this.steps,
+    this.needs = const <String>[],
   });
+
+  /// When not empty, one of these must also be in the question. The
+  /// "new X" tours use it: "how do I move a task" names a task too, and
+  /// used to start the New task tour instead of Move a task.
+  final List<String> needs;
 
   final String title;
 
@@ -32,6 +38,27 @@ class BuiltinFlow {
   final List<CoachStep> steps;
 }
 
+/// Words that mean "make a new one" - required by the creation tours.
+const List<String> _creating = <String>[
+  'add',
+  'create',
+  'make',
+  'new',
+  'set up',
+  'setup',
+  'assign',
+  'naya',
+  'nayi',
+  'naye',
+  'bana',
+  'banau',
+  'banaun',
+  'banana',
+  'banao',
+  'dalna',
+  'daalna',
+];
+
 const List<BuiltinFlow> _flows = <BuiltinFlow>[
   // ------------------------------------------------------------- admin
   BuiltinFlow(
@@ -39,61 +66,94 @@ const List<BuiltinFlow> _flows = <BuiltinFlow>[
     destination: 'teams',
     keywords: <String>['team'],
     roles: <String>['ADMIN'],
+    needs: _creating,
     steps: <CoachStep>[
-      CoachStep('Tap the + button to start a new team.',
-          target: 'teams_fab'),
-      CoachStep('Type the team name here.', target: 'team_name'),
+      CoachStep('Tap New team to start.', target: 'teams_fab'),
       CoachStep(
-        'Pick the Team lead. They get the team lead panel for this team.',
+        'Type the team name. The description below it is optional.',
+        target: 'team_name',
+      ),
+      CoachStep(
+        'Pick the Team lead - they get the team lead panel for this team. '
+        '"No lead yet" is fine if you have not decided.',
         target: 'team_lead',
       ),
       CoachStep(
-        'Press this. The team has to exist before people can be added '
-        'to it.',
+        'Press "Save and add members". The team has to exist before '
+        'people can be added to it.',
         target: 'team_save_and_members',
       ),
       CoachStep(
-        'Now press Add, pick a person, and repeat for everyone. They get '
-        'every project this team owns.',
+        'Press Add, pick a person, and repeat for everyone on the team. '
+        'They get every project this team owns. Press Next when done.',
+        target: 'team_add_member',
       ),
-      CoachStep('Press Save when the team is complete.',
-          target: 'team_save'),
+      CoachStep('Press Save. The team is ready.', target: 'team_save'),
     ],
-  ),
-  BuiltinFlow(
+  ),  BuiltinFlow(
     title: 'New project',
     destination: 'projects',
     keywords: <String>['project'],
     roles: <String>['ADMIN'],
+    needs: _creating,
     steps: <CoachStep>[
-      CoachStep('Tap the + button to start a new project.',
-          target: 'projects_fab'),
-      CoachStep('Type the project name here.', target: 'project_name'),
+      CoachStep('Tap New project to start.', target: 'projects_fab'),
       CoachStep(
-        'Pick the Manager and the Team. The team\u2019s members get this '
-        'project, its tasks and its discussion automatically.',
+        'Type the project name - at least 3 characters.',
+        target: 'project_name',
       ),
-      CoachStep('Set the dates, priority and status, then press Create.'),
+      CoachStep(
+        'Describe what the project covers. This one is required.',
+        target: 'project_description',
+      ),
+      CoachStep(
+        'Set the start and end dates if you know them. Both are optional.',
+        target: 'project_dates',
+      ),
+      CoachStep(
+        'Check the Status and Priority. Change them only if the defaults '
+        'do not fit.',
+        target: 'project_status',
+      ),
+      CoachStep(
+        'Pick the Project manager - the person who runs it.',
+        target: 'project_manager',
+      ),
+      CoachStep(
+        'Pick the Team. Only active teams with people in them are listed; '
+        'their members get this project automatically.',
+        target: 'project_team',
+      ),
+      CoachStep('Press Create project.', target: 'project_save'),
     ],
-  ),
-  BuiltinFlow(
+  ),  BuiltinFlow(
     title: 'New user',
     destination: 'users',
     keywords: <String>['user', 'account', 'employee', 'login'],
     roles: <String>['ADMIN'],
+    needs: _creating,
     steps: <CoachStep>[
-      CoachStep('Tap the + button to add someone.', target: 'users_fab'),
-      CoachStep('Type the username they will sign in with.',
-          target: 'user_username'),
+      CoachStep('Tap New user to start.', target: 'users_fab'),
+      CoachStep(
+        'Type the username they will sign in with. First and last name '
+        'below it are optional.',
+        target: 'user_username',
+      ),
       CoachStep('Type their email address.', target: 'user_email'),
-      CoachStep('Set a password. You will need to tell them what it is.',
-          target: 'user_password'),
-      CoachStep('Pick their Role - it decides what they can see.',
-          target: 'user_role'),
-      CoachStep('Leave Active on and press Create.'),
+      CoachStep(
+        'Pick their Role - it decides what they can see and do.',
+        target: 'user_role',
+      ),
+      CoachStep(
+        'Set a password, at least 8 characters. It is e-mailed to them.',
+        target: 'user_password',
+      ),
+      CoachStep(
+        'Leave Active on, then press Create user.',
+        target: 'user_save',
+      ),
     ],
-  ),
-  BuiltinFlow(
+  ),  BuiltinFlow(
     title: 'Deactivate someone',
     destination: 'users',
     keywords: <String>['deactivate', 'disable', 'remove user', 'band'],
@@ -129,19 +189,32 @@ const List<BuiltinFlow> _flows = <BuiltinFlow>[
     destination: 'tasks',
     keywords: <String>['task', 'assign'],
     roles: <String>['ADMIN', 'PROJECT_MANAGER', 'TEAM_LEAD'],
+    needs: _creating,
     steps: <CoachStep>[
-      CoachStep('Tap the + button to start a new task.',
-          target: 'tasks_fab'),
-      CoachStep('Pick the project it belongs to.', target: 'task_project'),
-      CoachStep('Type the task title here.', target: 'task_title'),
+      CoachStep('Tap New task to start.', target: 'tasks_fab'),
+      CoachStep(
+        'Pick the project it belongs to. Do this first - the people you '
+        'can assign come from that project.',
+        target: 'task_project',
+      ),
+      CoachStep('Type the task title.', target: 'task_title'),
       CoachStep(
         'Pick who does it. They get a notification on their phone.',
         target: 'task_assignee',
       ),
-      CoachStep('Set the due date and priority, then press Create.'),
+      CoachStep(
+        'Check the Status and Priority. Change them only if the defaults '
+        'do not fit.',
+        target: 'task_priority',
+      ),
+      CoachStep(
+        'Set the Due date so it shows on the calendar. The start date is '
+        'optional.',
+        target: 'task_dates',
+      ),
+      CoachStep('Press Create task.', target: 'task_save'),
     ],
-  ),
-  BuiltinFlow(
+  ),  BuiltinFlow(
     title: 'Move a task',
     destination: 'tasks',
     keywords: <String>['status', 'board', 'progress', 'move', 'drag'],
@@ -345,6 +418,16 @@ const List<String> _asking = <String>[
 /// checked first and always win, even if a flow's keyword also shows
 /// up in the same sentence (e.g. "status" in "what is each status").
 const List<String> _dataQuestionHints = <String>[
+  "who's my",
+  'whos my',
+  'what tasks',
+  'which tasks',
+  'what projects',
+  'which projects',
+  'list my',
+  'tell me',
+  'overdue',
+  'do i have',
   'how many',
   'how much',
   'what is each',
@@ -357,6 +440,14 @@ const List<String> _dataQuestionHints = <String>[
   'who is my',
 ];
 
+/// True when [word] starts a word in [text] - so "add" matches "add a
+/// task" and "added", but not "address", and "time" does not fire on
+/// "sometimes". (Prefix match on purpose: "task" must still catch
+/// "tasks".)
+bool _hasWord(String text, String word) {
+  return RegExp('(?<![a-z0-9])${RegExp.escape(word)}').hasMatch(text);
+}
+
 /// The flow this question is asking for, if the app already knows it.
 ///
 /// Deliberately strict: the subject has to be named and the sentence
@@ -365,22 +456,36 @@ const List<String> _dataQuestionHints = <String>[
 BuiltinFlow? matchBuiltinFlow(String question, String role) {
   final String text = question.toLowerCase();
 
-  if (_dataQuestionHints.any((String hint) => text.contains(hint))) {
+  if (_dataQuestionHints.any((String hint) => _hasWord(text, hint))) {
     return null;
   }
 
-  final bool asking = _asking.any((String word) => text.contains(word));
+  final bool asking = _asking.any((String word) => _hasWord(text, word));
 
   if (!asking) {
     return null;
   }
 
-  for (final BuiltinFlow flow in _flows) {
+  // A task lives inside a project and is usually for a team, so "add a
+  // task to the project" and "team ke liye task banana" name all three.
+  // The task is what they are making - check it first. Otherwise the
+  // list order decides.
+  final List<BuiltinFlow> ordered = <BuiltinFlow>[
+    ..._flows.where((BuiltinFlow f) => f.title == 'New task'),
+    ..._flows.where((BuiltinFlow f) => f.title != 'New task'),
+  ];
+
+  for (final BuiltinFlow flow in ordered) {
     if (!flow.roles.contains(role)) {
       continue;
     }
 
-    if (flow.keywords.any((String word) => text.contains(word))) {
+    if (flow.needs.isNotEmpty &&
+        !flow.needs.any((String word) => _hasWord(text, word))) {
+      continue;
+    }
+
+    if (flow.keywords.any((String word) => _hasWord(text, word))) {
       return flow;
     }
   }

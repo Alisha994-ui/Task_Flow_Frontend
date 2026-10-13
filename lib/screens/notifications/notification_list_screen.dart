@@ -5,6 +5,7 @@ import '../../models/notification_model.dart';
 import '../../providers/notification_provider.dart';
 import '../../widgets/admin/async_view.dart';
 import '../manager/task_detail_screen.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 class NotificationListScreen extends StatefulWidget {
   const NotificationListScreen({super.key, this.canManageTasks = true});
@@ -123,7 +124,7 @@ class _NotificationListScreenState extends State<NotificationListScreen> {
                   ? 'You are all caught up.'
                   : 'Task assignments, comments and deadline reminders '
                       'land here.',
-              child: RefreshIndicator(
+              child: AppRefreshIndicator(
                 onRefresh: provider.refresh,
                 child: ListView.separated(
                   physics: const AlwaysScrollableScrollPhysics(),

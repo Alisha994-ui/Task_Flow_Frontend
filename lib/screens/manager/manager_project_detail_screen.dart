@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/auto_hide_fab.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/constants/project_constants.dart';
@@ -20,6 +22,7 @@ import '../../widgets/project_people.dart';
 import '../discussion/project_discussion_screen.dart';
 import 'task_actions.dart';
 import 'task_detail_screen.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 /// Project view for a manager: overview, its tasks, its people and the
 /// activity feed built from the project's tasks.
@@ -87,7 +90,8 @@ class _ManagerProjectDetailViewState extends State<_ManagerProjectDetailView>
         context.watch<ManagerProvider>().managerId != null &&
             isProjectClosed(project);
 
-    return Scaffold(
+    return FabScrollHost(
+      builder: (_, FabVisibility fab) => Scaffold(
         appBar: AppBar(
           title: Text(project?.name ?? 'Project'),
           bottom: TabBar(
@@ -105,14 +109,14 @@ class _ManagerProjectDetailViewState extends State<_ManagerProjectDetailView>
         ),
         // Only on Tasks. Anywhere else it is either useless or, on
         // Discussion, directly over the send button.
-        floatingActionButton: (locked || _tabs.index != _tasksTab)
+        floatingActionButton: AutoHideFab.wrap(fab, (locked || _tabs.index != _tasksTab)
             ? null
             : FloatingActionButton.extended(
                 onPressed: () =>
                     TaskActions.create(context, projectId: projectId),
                 icon: const Icon(Icons.add),
                 label: const Text('New task'),
-              ),
+              ), resetKey: _tabs.index),
         body: AsyncView(
           isLoading: detail.isLoading && project == null,
           error: project == null ? detail.error : null,
@@ -125,7 +129,7 @@ class _ManagerProjectDetailViewState extends State<_ManagerProjectDetailView>
                   children: <Widget>[
                     _OverviewTab(project: project),
                     _TasksTab(projectId: projectId),
-                    RefreshIndicator(
+                    AppRefreshIndicator(
                       onRefresh: detail.refresh,
                       child: ProjectPeople(
                         project: project,
@@ -141,6 +145,7 @@ class _ManagerProjectDetailViewState extends State<_ManagerProjectDetailView>
                   ],
                 ),
       ),
+    ),
     );
   }
 }
@@ -164,7 +169,7 @@ class _OverviewTab extends StatelessWidget {
     final int overdue = projectTasks.where((TaskModel t) => t.isOverdue).length;
     final bool late = isOverdue(project.endDate, project.status);
 
-    return RefreshIndicator(
+    return AppRefreshIndicator(
       onRefresh: detail.refresh,
       child: ListView(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -354,7 +359,7 @@ class _TasksTab extends StatelessWidget {
       );
     }
 
-    return RefreshIndicator(
+    return AppRefreshIndicator(
       onRefresh: tasks.refresh,
       child: ListView.separated(
         physics: const AlwaysScrollableScrollPhysics(),
@@ -468,7 +473,7 @@ class _ActivityTabState extends State<_ActivityTab> {
       emptyTitle: 'No activity yet',
       emptyMessage:
           'Creating tasks, changing status and commenting all show up here.',
-      child: RefreshIndicator(
+      child: AppRefreshIndicator(
         onRefresh: _load,
         child: ListView.builder(
           physics: const AlwaysScrollableScrollPhysics(),

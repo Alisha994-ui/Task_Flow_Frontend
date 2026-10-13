@@ -1,9 +1,11 @@
+
 import 'dart:async';
 import 'dart:convert';
 
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 
+import '../core/network/api_cache.dart';
 import '../core/network/api_client.dart';
 import '../core/storage/secure_storage.dart';
 import '../models/user_model.dart';
@@ -15,7 +17,6 @@ class AuthProvider extends ChangeNotifier {
 
   bool _isLoading = false;
   bool _isAuthenticated = false;
-
   bool _restoredFromCache = false;
 
   UserModel? get user => _user;
@@ -30,6 +31,13 @@ class AuthProvider extends ChangeNotifier {
         error is TimeoutException;
   }
 
+  void clearRestoredFromCache() {
+    if (!_restoredFromCache) return;
+
+    _restoredFromCache = false;
+    notifyListeners();
+  }
+
   Future<void> login({
     required String username,
     required String password,
@@ -38,6 +46,8 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
+      await ApiCache.clear();
+
       final response = await ApiClient.post(
         '/auth/login/',
         body: {
@@ -50,7 +60,10 @@ class AuthProvider extends ChangeNotifier {
       final accessToken = response['access']?.toString();
       final refreshToken = response['refresh']?.toString();
 
-      if (accessToken == null || refreshToken == null) {
+      if (accessToken == null ||
+          accessToken.isEmpty ||
+          refreshToken == null ||
+          refreshToken.isEmpty) {
         throw Exception(
           'Login response does not contain JWT tokens.',
         );
@@ -72,22 +85,24 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _loadCurrentUser() async {
-    final response = await ApiClient.get(
-      '/auth/me/',
-    );
+    final response = await ApiClient.get('/auth/me/');
 
     _user = UserModel.fromJson(response);
 
-    await _storage.saveUserCache(
-      jsonEncode(response),
-    );
+    await _storage.saveUserCache(jsonEncode(response));
+
+    clearRestoredFromCache();
   }
 
   Future<bool> restoreSession() async {
     final accessToken = await _storage.getAccessToken();
 
     if (accessToken == null || accessToken.isEmpty) {
+      _user = null;
       _isAuthenticated = false;
+      _restoredFromCache = false;
+
+      notifyListeners();
       return false;
     }
 
@@ -98,36 +113,26 @@ class AuthProvider extends ChangeNotifier {
       _restoredFromCache = false;
 
       notifyListeners();
-
       return true;
     } catch (e) {
-      // ----------------------------------------------------------
-      // OFFLINE / NETWORK FAILURE
-      // ----------------------------------------------------------
-      //
-      // The server was never reached.
-      // Therefore the saved JWT is still considered valid.
-      //
-      // Restore the last known user instead of logging out.
       if (_isNetworkError(e)) {
         return _restoreFromCacheOrKeepTrying();
       }
 
-      // ----------------------------------------------------------
-      // SERVER REJECTED THE SESSION
-      // ----------------------------------------------------------
-      //
-      // Only clear the session when the server was reachable and
-      // actively rejected the token.
-      await _storage.clearTokens();
+      if (e.toString().contains(
+        'Your session has ended. Please sign in again.',
+      )) {
+        await _storage.clearTokens();
 
-      _user = null;
-      _isAuthenticated = false;
-      _restoredFromCache = false;
+        _user = null;
+        _isAuthenticated = false;
+        _restoredFromCache = false;
 
-      notifyListeners();
+        notifyListeners();
+        return false;
+      }
 
-      return false;
+      return _restoreFromCacheOrKeepTrying();
     }
   }
 
@@ -136,9 +141,9 @@ class AuthProvider extends ChangeNotifier {
 
     if (cached == null || cached.isEmpty) {
       _isAuthenticated = false;
+      _restoredFromCache = false;
 
       notifyListeners();
-
       return false;
     }
 
@@ -153,23 +158,20 @@ class AuthProvider extends ChangeNotifier {
       _restoredFromCache = true;
 
       notifyListeners();
-
       return true;
     } catch (_) {
-      // Do NOT clear tokens here.
-      //
-      // The cache may be corrupt, but that does not prove that the
-      // saved authentication session is invalid.
+      _user = null;
       _isAuthenticated = false;
+      _restoredFromCache = false;
 
       notifyListeners();
-
       return false;
     }
   }
 
   Future<void> logout() async {
     await _storage.clearTokens();
+    await ApiCache.clear();
 
     _user = null;
     _isAuthenticated = false;

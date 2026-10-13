@@ -1,4 +1,8 @@
 import 'package:flutter/material.dart';
+
+import '../../core/coach/coach_target.dart';
+
+import '../../widgets/auto_hide_fab.dart';
 import 'package:provider/provider.dart';
 
 import '../../core/utils/auto_refresh.dart';
@@ -215,7 +219,8 @@ class _TeamLeadPanelScreenState
     final List<ProjectModel> myProjects =
         _myProjects();
 
-    return Scaffold(
+    return FabScrollHost(
+      builder: (_, FabVisibility fab) => Scaffold(
       key: _scaffoldKey,
 
       endDrawer: AssistantPanel(
@@ -291,19 +296,21 @@ class _TeamLeadPanelScreenState
         ],
       ),
 
-      floatingActionButton:
-          (_index == 1 || _index == 3) &&
+      floatingActionButton: AutoHideFab.wrap(fab, (_index == 1 || _index == 3) &&
                   myProjects.isNotEmpty
-              ? FloatingActionButton.extended(
-                  onPressed: _createTask,
-                  icon: const Icon(
-                    Icons.add,
-                  ),
-                  label: const Text(
-                    'New task',
+              ? CoachTarget(
+                  name: 'tasks_fab',
+                  child: FloatingActionButton.extended(
+                    onPressed: _createTask,
+                    icon: const Icon(
+                      Icons.add,
+                    ),
+                    label: const Text(
+                      'New task',
+                    ),
                   ),
                 )
-              : null,
+              : null, resetKey: _index),
 
       bottomNavigationBar:
           NavigationBar(
@@ -368,6 +375,7 @@ class _TeamLeadPanelScreenState
           ),
         ],
       ),
+    ),
     );
   }
 }

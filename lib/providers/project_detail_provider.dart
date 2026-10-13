@@ -34,33 +34,40 @@ class ProjectDetailProvider extends ChangeNotifier {
   Set<int> get memberUserIds =>
       _members.map((ProjectMemberModel m) => m.user).toSet();
 
-  Future<void> load({bool silent = false}) async {
-    _isLoading = true;
 
-    if (!silent) {
-      _error = null;
-      notifyListeners();
-    }
+Future<void> load({bool silent = false}) async {
+  _isLoading = true;
 
-    try {
-      _project = await ProjectService.getProject(projectId);
-      _members = await ProjectService.getProjectMembers(projectId);
-      _error = null;
-    } catch (e) {
-      _error = friendlyError(e);
-    }
-
-    // The progress endpoint is optional - a failure here should not blank
-    // out the whole screen.
-    try {
-      _progress = await ProjectService.getProjectProgress(projectId);
-    } catch (_) {
-      _progress = <String, dynamic>{};
-    }
-
-    _isLoading = false;
+  if (!silent) {
+    _error = null;
     notifyListeners();
   }
+
+  try {
+    final ProjectModel project =
+        await ProjectService.getProject(projectId);
+
+    final List<ProjectMemberModel> members =
+        await ProjectService.getProjectMembers(projectId);
+
+    _project = project;
+    _members = members;
+    _error = null;
+  } catch (e) {
+    // Preserve previously loaded project and members on network failure.
+    _error = friendlyError(e);
+  }
+
+  // Progress is optional. Preserve the previous value if the request fails.
+  try {
+    _progress = await ProjectService.getProjectProgress(projectId);
+  } catch (_) {
+    // Keep previously loaded progress.
+  }
+
+  _isLoading = false;
+  notifyListeners();
+}
 
   Future<void> refresh() => load(silent: _project != null);
 

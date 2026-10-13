@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../../widgets/auto_hide_fab.dart';
 import '../../core/coach/coach_target.dart';
 import 'package:provider/provider.dart';
 import '../../screens/assistant/assistant_panel.dart';
@@ -153,7 +155,8 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
+    return FabScrollHost(
+      builder: (_, FabVisibility fab) => Scaffold(
       key: _scaffoldKey,
       endDrawer: AssistantPanel(
         destinations: const <String, int>{
@@ -205,7 +208,7 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
           ),
         ],
       ),
-      floatingActionButton: _index == 2 || _index == 3
+      floatingActionButton: AutoHideFab.wrap(fab, _index == 2 || _index == 3
           ? CoachTarget(
               name: 'tasks_fab',
               child: FloatingActionButton.extended(
@@ -217,7 +220,7 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
                 label: const Text('New task'),
               ),
             )
-          : null,
+          : null, resetKey: _index),
       bottomNavigationBar: NavigationBar(
         selectedIndex: _index,
         onDestinationSelected: (int value) => setState(() => _index = value),
@@ -248,6 +251,7 @@ class _ManagerPanelScreenState extends State<ManagerPanelScreen> {
           ),
         ],
       ),
+    ),
     );
   }
 }

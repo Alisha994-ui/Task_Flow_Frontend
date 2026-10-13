@@ -7,6 +7,7 @@ import '../../core/utils/app_date_utils.dart';
 import '../../models/project_model.dart';
 import '../../models/team_model.dart';
 import '../../models/user_model.dart';
+import '../../providers/coach_provider.dart';
 import '../../providers/project_provider.dart';
 import '../../providers/team_provider.dart';
 import '../../providers/user_provider.dart';
@@ -26,6 +27,10 @@ class ProjectFormScreen extends StatefulWidget {
 
 class _ProjectFormScreenState extends State<ProjectFormScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  // Errors stay hidden until the first submit attempt; after that the form
+  // re-validates on every change, so an error clears as soon as the field is filled.
+  AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
   late final TextEditingController _nameController;
   late final TextEditingController _descriptionController;
@@ -60,7 +65,9 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
 
     WidgetsBinding.instance.addPostFrameCallback((_) {
       context.read<UserProvider>().ensureLoaded();
-      context.read<TeamProvider>().ensureLoaded();
+      // Refresh (not just ensureLoaded) so a team deactivated a moment
+      // ago - here or on another device - is not offered from stale data.
+      context.read<TeamProvider>().refresh();
     });
 
     _initialStartDate = _startDate;
@@ -149,6 +156,8 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
   }
 
   Future<void> _save() async {
+    setState(() => _autovalidateMode = AutovalidateMode.always);
+
     if (!(_formKey.currentState?.validate() ?? false)) {
       return;
     }
@@ -161,6 +170,26 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
 
     if (_teamId == null) {
       _snack('Pick a team first', isError: true);
+
+      return;
+    }
+
+    // Last line of defence behind the dropdown filter: never save a new
+    // assignment to an inactive or empty team. A project already on such
+    // a team may keep it while other fields are edited.
+    final TeamModel? chosenTeam = context.read<TeamProvider>().byId(_teamId);
+    final bool keepingCurrentTeam =
+        widget.isEdit && _teamId == _initialTeamId;
+
+    if (chosenTeam != null &&
+        !keepingCurrentTeam &&
+        (!chosenTeam.isActive || chosenTeam.members.isEmpty)) {
+      _snack(
+        chosenTeam.isActive
+            ? '"${chosenTeam.name}" has no members. Pick a team with people in it.'
+            : '"${chosenTeam.name}" is inactive. Pick an active team.',
+        isError: true,
+      );
 
       return;
     }
@@ -225,14 +254,17 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       isDirty: () => _isDirty,
       child: Scaffold(
       appBar: AppBar(
-        leading: IconButton(
-        icon: const Icon(Icons.arrow_back),
-        onPressed: () => DiscardGuard.handleBack(context),
-      ),
+        leading: Builder(
+          builder: (BuildContext guardContext) => IconButton(
+            icon: const Icon(Icons.arrow_back),
+            onPressed: () => DiscardGuard.handleBack(guardContext),
+          ),
+        ),
       title: Text(widget.isEdit ? 'Edit project' : 'New project'),
     ),
       body: Form(
         key: _formKey,
+        autovalidateMode: _autovalidateMode,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(16, 16, 16, 32),
           children: <Widget>[
@@ -259,7 +291,9 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            TextFormField(
+            CoachTarget(
+              name: 'project_description',
+              child: TextFormField(
               controller: _descriptionController,
               maxLines: 4,
               textCapitalization: TextCapitalization.sentences,
@@ -276,8 +310,11 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                 return null;
               },
             ),
+            ),
             const SizedBox(height: 16),
-            Row(
+            CoachTarget(
+              name: 'project_dates',
+              child: Row(
               children: <Widget>[
                 Expanded(
                   child: _DateField(
@@ -302,7 +339,12 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                 ),
               ],
             ),
+            ),
             const SizedBox(height: 16),
+            CoachTarget(
+              name: 'project_status',
+              child: Column(
+                children: <Widget>[
             DropdownButtonFormField<String>(
               initialValue: _status,
               isExpanded: true,
@@ -346,17 +388,32 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
                 }
               },
             ),
-            const SizedBox(height: 16),
-            _ManagerField(
-              users: users,
-              value: _managerId,
-              onChanged: (int? value) => setState(() => _managerId = value),
+                ],
+              ),
             ),
             const SizedBox(height: 16),
-            _TeamField(
-              teams: teams,
-              value: _teamId,
-              onChanged: (int? value) => setState(() => _teamId = value),
+            CoachTarget(
+              name: 'project_manager',
+              child: _ManagerField(
+                users: users,
+                value: _managerId,
+                onChanged: (int? value) {
+                  setState(() => _managerId = value);
+                  context.read<CoachProvider>().done('project_manager');
+                },
+              ),
+            ),
+            const SizedBox(height: 16),
+            CoachTarget(
+              name: 'project_team',
+              child: _TeamField(
+                teams: teams,
+                value: _teamId,
+                onChanged: (int? value) {
+                  setState(() => _teamId = value);
+                  context.read<CoachProvider>().done('project_team');
+                },
+              ),
             ),
             const SizedBox(height: 8),
             SwitchListTile(
@@ -377,7 +434,9 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: FilledButton.icon(
+          child: CoachTarget(
+            name: 'project_save',
+            child: FilledButton.icon(
             onPressed: projects.isSaving ? null : _save,
             icon: projects.isSaving
                 ? const SizedBox(
@@ -392,6 +451,7 @@ class _ProjectFormScreenState extends State<ProjectFormScreen> {
             style: FilledButton.styleFrom(
               minimumSize: const Size.fromHeight(48),
             ),
+          ),
           ),
         ),
       ),
@@ -517,6 +577,7 @@ class _TeamField extends StatelessWidget {
             (t.isActive && t.members.isNotEmpty) || t.id == value)
         .toList();
     final bool valueExists = list.any((TeamModel t) => t.id == value);
+    final TeamModel? selected = teams.byId(value);
 
     return DropdownButtonFormField<int>(
       initialValue: valueExists ? value : null,
@@ -526,14 +587,17 @@ class _TeamField extends StatelessWidget {
         border: const OutlineInputBorder(),
         helperText: value != null && !valueExists
             ? 'Current team (#$value) is not in the loaded list'
-            : null,
+            : (selected != null && !selected.isActive)
+                ? 'This team is inactive. Pick an active team to change it.'
+                : null,
       ),
       items: list
           .map(
             (TeamModel team) => DropdownMenuItem<int>(
               value: team.id,
               child: Text(
-                '${team.name} (${team.members.length})',
+                '${team.name} (${team.members.length})'
+                '${team.isActive ? '' : ' - inactive'}',
                 overflow: TextOverflow.ellipsis,
               ),
             ),

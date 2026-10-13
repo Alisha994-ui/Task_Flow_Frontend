@@ -9,6 +9,25 @@ class CoachStep {
   /// A name registered by a CoachTarget, or null when the step is not
   /// about one particular control.
   final String? target;
+
+  /// True when the step is "press this button" and pressing it is what
+  /// moves the tour on: a + button opens the form (a new screen), a
+  /// save button closes it or saves in place. For these the bubble
+  /// hides Next while the button is on screen - pressing Next instead
+  /// left the person on the list with "type the name here" pointing at
+  /// nothing. Derived from the name, so steps written by the server
+  /// assistant behave the same as the built-in ones.
+  bool get waitsForTap {
+    final String? name = target;
+
+    if (name == null) {
+      return false;
+    }
+
+    return name.endsWith('_fab') ||
+        name.endsWith('_save') ||
+        name == 'team_save_and_members';
+  }
 }
 
 /// A walkthrough in progress.
@@ -40,6 +59,58 @@ class CoachProvider extends ChangeNotifier {
 
   bool get isLast => _index >= _steps.length - 1;
 
+  /// Dropdown menus, dialogs, date pickers and bottom sheets open above
+  /// the page. The overlay sits above the whole navigator, so without
+  /// this it dimmed the open menu, lit up whatever menu item happened to
+  /// cover the field, and parked the bubble on top of the choices.
+  /// While one is open the overlay steps aside; it comes back when the
+  /// popup closes.
+  int _popups = 0;
+
+  bool get popupOpen => _popups > 0;
+
+  void popupOpened() {
+    _popups++;
+
+    if (_popups == 1) {
+      notifyListeners();
+    }
+  }
+
+  void popupClosed() {
+    if (_popups == 0) {
+      return;
+    }
+
+    _popups--;
+
+    if (_popups == 0) {
+      notifyListeners();
+    }
+  }
+
+  /// Changes on every start and stop, so the navigator observer can tell
+  /// "the screen this tour opened" from a screen a later tour opened.
+  int _generation = 0;
+
+  int get generation => _generation;
+
+  /// The person used the control [name] (picked from a dropdown, saved
+  /// the team). If the current step is about that control, move on -
+  /// the step is done, and making them press Next as well is one tap
+  /// too many. Text fields do not call this: typing is not finishing.
+  void done(String name) {
+    if (!isActive || target != name) {
+      return;
+    }
+
+    if (isLast) {
+      stop();
+    } else {
+      next();
+    }
+  }
+
   void start(List<CoachStep> steps, {String title = ''}) {
     final List<CoachStep> cleaned =
         steps.where((CoachStep s) => s.text.trim().isNotEmpty).toList();
@@ -51,6 +122,7 @@ class CoachProvider extends ChangeNotifier {
     _steps = cleaned;
     _index = 0;
     _title = title;
+    _generation++;
     notifyListeners();
   }
 
@@ -69,6 +141,11 @@ class CoachProvider extends ChangeNotifier {
   }
 
   void stop() {
+    if (_steps.isEmpty) {
+      return;
+    }
+
+    _generation++;
     _steps = <CoachStep>[];
     _index = 0;
     _title = '';

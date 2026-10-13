@@ -7,13 +7,15 @@ import '../../providers/project_provider.dart';
 import '../../providers/task_provider.dart';
 import '../../widgets/admin/async_view.dart';
 import 'project_discussion_screen.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 /// The projects a person can talk in.
 ///
 /// Built from their tasks: an employee has no project list of their own.
 /// If /projects/ does not return the project - which happens when the
 /// backend scopes that endpoint more tightly than /tasks/ - the entry
-/// still appears, named by its id, so the discussion stays reachable.
+/// still appears, named from its tasks' embedded `project_name` (or, as a
+/// last resort, by its id), so the discussion stays reachable.
 class MyDiscussionsScreen extends StatelessWidget {
   const MyDiscussionsScreen({super.key});
 
@@ -27,9 +29,22 @@ class MyDiscussionsScreen extends StatelessWidget {
     // with the most recent task tends to be the one wanted.
     final List<int> projectIds = <int>[];
 
+    // Name embedded on the task itself (`project_name`). An employee's
+    // /projects/ list may not include the project, but their tasks do
+    // carry its name - the same source the task cards use (BUG-05).
+    final Map<int, String> namesFromTasks = <int, String>{};
+
     for (final TaskModel task in tasks.allTasks) {
       if (!projectIds.contains(task.project)) {
         projectIds.add(task.project);
+      }
+
+      final String? embedded = task.projectName?.trim();
+
+      if (embedded != null &&
+          embedded.isNotEmpty &&
+          !namesFromTasks.containsKey(task.project)) {
+        namesFromTasks[task.project] = embedded;
       }
     }
 
@@ -44,7 +59,7 @@ class MyDiscussionsScreen extends StatelessWidget {
         emptyTitle: 'No projects yet',
         emptyMessage:
             'Once you have a task on a project, it appears here.',
-        child: RefreshIndicator(
+        child: AppRefreshIndicator(
           onRefresh: tasks.refresh,
           child: ListView.separated(
             physics: const AlwaysScrollableScrollPhysics(),
@@ -54,7 +69,8 @@ class MyDiscussionsScreen extends StatelessWidget {
             itemBuilder: (BuildContext context, int index) {
               final int id = projectIds[index];
               final ProjectModel? project = projects.byId(id);
-              final String name = project?.name ?? 'Project #$id';
+              final String name =
+                  project?.name ?? namesFromTasks[id] ?? 'Project #$id';
 
               final int open = tasks
                   .forProject(id)

@@ -12,6 +12,7 @@ import '../../../providers/user_provider.dart';
 import '../../../widgets/admin/admin_widgets.dart';
 import '../../../widgets/admin/async_view.dart';
 import '../team_lead_member_detail_screen.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 /// Everyone on the teams this user leads, with how much each is carrying.
 class TeamLeadMembersTab extends StatelessWidget {
@@ -41,7 +42,7 @@ class TeamLeadMembersTab extends StatelessWidget {
       emptyTitle: 'No team yet',
       emptyMessage:
           'Once an admin makes you the lead of a team, its members appear here.',
-      child: RefreshIndicator(
+      child: AppRefreshIndicator(
         onRefresh: () async {
           await Future.wait<void>(<Future<void>>[
             teams.refresh(),

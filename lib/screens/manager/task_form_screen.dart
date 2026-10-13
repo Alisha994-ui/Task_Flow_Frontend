@@ -10,6 +10,7 @@ import '../../models/project_model.dart';
 import '../../models/task_model.dart';
 import '../../models/team_model.dart';
 import '../../models/user_model.dart';
+import '../../providers/coach_provider.dart';
 import '../../providers/project_provider.dart';
 import '../../providers/task_provider.dart';
 import '../../providers/team_provider.dart';
@@ -44,6 +45,10 @@ class TaskFormScreen extends StatefulWidget {
 
 class _TaskFormScreenState extends State<TaskFormScreen> {
   final GlobalKey<FormState> _formKey = GlobalKey<FormState>();
+
+  // Errors stay hidden until the first submit attempt; after that the form
+  // re-validates on every change, so an error clears as soon as the field is filled.
+  AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
 
   late final TextEditingController _titleController;
   late final TextEditingController _descriptionController;
@@ -190,6 +195,8 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
   }
 
   Future<void> _save() async {
+    setState(() => _autovalidateMode = AutovalidateMode.always);
+
     if (!(_formKey.currentState?.validate() ??
         false)) {
       return;
@@ -397,6 +404,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
 
       body: Form(
         key: _formKey,
+        autovalidateMode: _autovalidateMode,
         child: ListView(
           padding: const EdgeInsets.fromLTRB(
             16,
@@ -476,6 +484,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                             _assigneeId =
                                 null;
                           });
+                          context
+                              .read<CoachProvider>()
+                              .done('task_project');
                         },
                   validator:
                       (int? value) =>
@@ -553,8 +564,10 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                       const OutlineInputBorder(),
                   helperText:
                       _projectId == null
-                          ? 'Pick a project first to narrow this list'
-                          : 'Only members of the selected project team can be assigned',
+                          ? "Pick a project first - only that project's team can be assigned"
+                          : candidates.isEmpty
+                              ? "This project's team has no members yet"
+                              : 'Only members of the selected project team can be assigned',
                 ),
                 items:
                     <DropdownMenuItem<int?>>[
@@ -587,13 +600,18 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                         _assigneeId =
                             value,
                   );
+                  context
+                      .read<CoachProvider>()
+                      .done('task_assignee');
                 },
               ),
             ),
 
             const SizedBox(height: 16),
 
-            Row(
+            CoachTarget(
+              name: 'task_priority',
+              child: Row(
               children: <Widget>[
                 Expanded(
                   child:
@@ -700,10 +718,13 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                 ),
               ],
             ),
+            ),
 
             const SizedBox(height: 16),
 
-            Row(
+            CoachTarget(
+              name: 'task_dates',
+              child: Row(
               children: <Widget>[
                 Expanded(
                   child: _DateField(
@@ -757,6 +778,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                   ),
                 ),
               ],
+            ),
             ),
 
             const SizedBox(height: 20),
@@ -820,8 +842,9 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
             16,
             16,
           ),
-          child:
-              FilledButton.icon(
+          child: CoachTarget(
+            name: 'task_save',
+            child: FilledButton.icon(
             onPressed:
                 tasks.isSaving ||
                         myProjects.isEmpty
@@ -852,6 +875,7 @@ class _TaskFormScreenState extends State<TaskFormScreen> {
                 48,
               ),
             ),
+          ),
           ),
         ),
       ),

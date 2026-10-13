@@ -18,6 +18,10 @@ class AssistantService {
     final response = await ApiClient.post(
       '/assistant/ask/',
       body: <String, dynamic>{'question': question},
+      // A model answer routinely takes longer than a normal API call.
+      // Kept above AssistantProvider's own limit so a paused question
+      // is not killed underneath it by the HTTP layer.
+      timeout: const Duration(seconds: 120),
     );
 
     return response['answer']?.toString() ?? '';

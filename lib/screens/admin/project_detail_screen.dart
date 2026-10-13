@@ -14,6 +14,7 @@ import '../../widgets/admin/async_view.dart';
 import '../../widgets/project_people.dart';
 import '../discussion/project_discussion_screen.dart';
 import 'project_form_screen.dart';
+import '../../widgets/admin/app_refresh_indicator.dart';
 
 class ProjectDetailScreen extends StatelessWidget {
   const ProjectDetailScreen({super.key, required this.projectId});
@@ -183,7 +184,7 @@ class _ProjectDetailView extends StatelessWidget {
               ? const SizedBox.shrink()
               : TabBarView(
                   children: <Widget>[
-                    RefreshIndicator(
+                    AppRefreshIndicator(
                       onRefresh: detail.refresh,
                       child: ListView(
                         physics: const AlwaysScrollableScrollPhysics(),
@@ -203,7 +204,7 @@ class _ProjectDetailView extends StatelessWidget {
                         ],
                       ),
                     ),
-                    RefreshIndicator(
+                    AppRefreshIndicator(
                       onRefresh: detail.refresh,
                       child: ProjectPeople(
                         project: project,

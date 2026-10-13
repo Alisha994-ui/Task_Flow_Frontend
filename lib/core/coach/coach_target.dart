@@ -38,6 +38,30 @@ class CoachTargets {
     }
   }
 
+  /// Scrolls the nearest list so [name] is in view. A step pointing at
+  /// a field below the fold used to light up a spot off the screen; the
+  /// person saw the bubble and nothing else. Does nothing when the
+  /// control is not built or not inside a scrolling list (a FAB, a
+  /// bottom bar button).
+  static void reveal(String name) {
+    final BuildContext? context = _keys[name]?.currentContext;
+
+    if (context == null || !context.mounted) {
+      return;
+    }
+
+    if (Scrollable.maybeOf(context) == null) {
+      return;
+    }
+
+    Scrollable.ensureVisible(
+      context,
+      alignment: 0.25,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
+  }
+
   /// Where [name] is on screen right now, or null when it is not built -
   /// the person may be on a different tab, or the form is not open yet.
   static Rect? rectOf(String name) {

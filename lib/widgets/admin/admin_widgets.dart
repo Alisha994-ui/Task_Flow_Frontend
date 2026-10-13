@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../core/network/api_client.dart';
 import '../../providers/auth_provider.dart';
 
 /// Shared building blocks. Everything here follows AppTheme, so changing
@@ -36,11 +37,13 @@ class DiscardGuard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     Future<void> onBack() async {
-      final bool hadFocus =
-          FocusManager.instance.primaryFocus?.hasFocus ?? false;
+      // Real keyboard visibility, not "does something have focus": the
+      // route's own focus scope always counts as focused, which would
+      // swallow Back even with no keyboard on screen.
+      final bool keyboardOpen = View.of(context).viewInsets.bottom > 0;
 
-      if (hadFocus) {
-        FocusScope.of(context).unfocus();
+      if (keyboardOpen) {
+        FocusManager.instance.primaryFocus?.unfocus();
         return;
       }
 
@@ -126,33 +129,48 @@ class OfflineBanner extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final bool offline = context.watch<AuthProvider>().restoredFromCache;
+    final bool restored = context.watch<AuthProvider>().restoredFromCache;
 
-    return AnimatedSwitcher(
-      duration: const Duration(milliseconds: 200),
-      child: !offline
-          ? const SizedBox.shrink()
-          : Container(
-              key: const ValueKey<bool>(true),
-              width: double.infinity,
-              color: const Color(0xFFD97706),
-              padding: const EdgeInsets.symmetric(
-                horizontal: 16,
-                vertical: 8,
-              ),
-              child: const Row(
-                children: <Widget>[
-                  Icon(Icons.cloud_off, size: 16, color: Colors.white),
-                  SizedBox(width: 8),
-                  Expanded(
-                    child: Text(
-                      'Offline - showing data from your last session.',
-                      style: TextStyle(color: Colors.white, fontSize: 12),
-                    ),
+    return ListenableBuilder(
+      listenable: Listenable.merge(<Listenable>[
+        ApiClient.offline,
+        ApiClient.deviceOnline,
+      ]),
+      builder: (BuildContext context, _) {
+        final bool offline = restored || ApiClient.offline.value;
+        final String text = ApiClient.deviceOnline.value
+            ? "Can't reach the server - showing saved data."
+            : "You're offline - showing saved data. "
+                'Changes need an internet connection.';
+
+        return AnimatedSwitcher(
+          duration: const Duration(milliseconds: 200),
+          child: !offline
+              ? const SizedBox.shrink()
+              : Container(
+                  key: const ValueKey<bool>(true),
+                  width: double.infinity,
+                  color: const Color(0xFFD97706),
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 8,
                   ),
-                ],
-              ),
-            ),
+                  child: Row(
+                    children: <Widget>[
+                      const Icon(Icons.cloud_off, size: 16, color: Colors.white),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          text,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+        );
+      },
     );
   }
 }

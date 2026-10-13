@@ -201,11 +201,13 @@ class TaskActions {
     final TeamProvider teams = context.read<TeamProvider>();
     final ProjectProvider projects = context.read<ProjectProvider>();
 
+    // Same rule as the task form: only the project's team (members and
+    // lead) can be assigned. An empty team means an empty list - never
+    // "everyone" - so the picker cannot hand out work to outsiders.
     final TeamModel? team = teams.byId(projects.byId(task.project)?.team);
-    final bool teamHasNoMembers = team == null || team.members.isEmpty;
 
-    final List<UserModel> scoped = teamHasNoMembers
-        ? users.allUsers
+    final List<UserModel> scoped = team == null
+        ? const <UserModel>[]
         : users.allUsers
             .where((UserModel u) =>
                 team.members.contains(u.id) || team.teamLead == u.id)
@@ -215,9 +217,11 @@ class TaskActions {
       context,
       candidates: scoped,
       current: task.assignee,
-      scopeNote: teamHasNoMembers
-          ? "This project's team has nobody in it yet - showing everyone."
-          : null,
+      scopeNote: team == null
+          ? 'This project has no team yet.'
+          : scoped.isEmpty
+              ? "This project's team has no members yet."
+              : null,
     );
 
     if (picked == null) {
@@ -227,14 +231,18 @@ class TaskActions {
     final int? userId = picked == -1 ? null : picked;
     final bool ok = await tasks.assignTo(task.id, userId);
 
-    // Belt and braces: assignTo() already refreshes this task from the
-    // server's response, but the card must never sit showing the old
-    // assignee until a manual pull-to-refresh - so also apply the
-    // change locally right away.
+    // assignTo() already stores the server's copy of the task. Only if
+    // that somehow still shows the old assignee do we patch it locally -
+    // starting from the freshest copy, not the stale one this method was
+    // called with, so other fields are never rolled back.
     if (ok) {
-      tasks.replaceLocally(
-        task.copyWith(assignee: userId, clearAssignee: userId == null),
-      );
+      final TaskModel current = tasks.byId(task.id) ?? task;
+
+      if (current.assignee != userId) {
+        tasks.replaceLocally(
+          current.copyWith(assignee: userId, clearAssignee: userId == null),
+        );
+      }
     }
 
     if (!context.mounted) {
@@ -309,6 +317,12 @@ if (saved == true) {
         ),
       ),
     );
+
+    // Same as edit(): do not let the route pop hand focus (and the
+    // keyboard) back to a search field on the list behind.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      FocusManager.instance.primaryFocus?.unfocus();
+    });
 
     if (saved == true && context.mounted) {
       _snack(context, 'Task created');

@@ -12,6 +12,7 @@ import '../../../widgets/admin/admin_widgets.dart';
 import '../../../widgets/admin/async_view.dart';
 import '../project_detail_screen.dart';
 import '../project_form_screen.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 class AdminProjectsTab extends StatefulWidget {
   const AdminProjectsTab({super.key});
@@ -166,7 +167,7 @@ class _AdminProjectsTabState extends State<AdminProjectsTab> {
                     child: const Text('Clear filters'),
                   )
                 : null,
-            child: RefreshIndicator(
+            child: AppRefreshIndicator(
               onRefresh: provider.refresh,
               child: ListView.separated(
                 physics: const AlwaysScrollableScrollPhysics(),

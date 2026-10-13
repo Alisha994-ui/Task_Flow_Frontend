@@ -5,6 +5,7 @@ import '../../../models/admin_dashboard_model.dart';
 import '../../../providers/admin_dashboard_provider.dart';
 import '../../../widgets/admin/admin_widgets.dart';
 import '../../../widgets/admin/async_view.dart';
+import '../../../widgets/admin/app_refresh_indicator.dart';
 
 class AdminDashboardTab extends StatelessWidget {
   const AdminDashboardTab({super.key});
@@ -20,7 +21,7 @@ class AdminDashboardTab extends StatelessWidget {
       error: data == null ? provider.error : null,
       isEmpty: false,
       onRetry: provider.refresh,
-      child: RefreshIndicator(
+      child: AppRefreshIndicator(
         onRefresh: provider.refresh,
         child: data == null
             ? ListView(
@@ -68,7 +69,7 @@ class _DashboardBody extends StatelessWidget {
           crossAxisSpacing: 12,
           // A single number and a label do not need a near-square tile -
           // 1.15 left each card mostly empty space below the text.
-          childAspectRatio: 1.9,
+          childAspectRatio: 1.35,
           children: <Widget>[
             StatCard(
               label: 'Total users',

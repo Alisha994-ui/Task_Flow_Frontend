@@ -232,7 +232,9 @@ class _Column extends StatelessWidget {
                 }
 
                 return ListView.builder(
-                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 12),
+                  // Room for the last card to scroll clear of the
+                  // "New task" button (BUG-12).
+                  padding: const EdgeInsets.fromLTRB(10, 0, 10, 88),
                   itemCount: tasks.length,
                   itemBuilder: (BuildContext context, int index) {
                     final TaskModel task = tasks[index];

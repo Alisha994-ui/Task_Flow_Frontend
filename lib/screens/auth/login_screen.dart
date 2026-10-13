@@ -19,6 +19,10 @@ class LoginScreen extends StatefulWidget {
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
 
+  // Errors stay hidden until the first submit attempt; after that the form
+  // re-validates on every change, so an error clears as soon as the field is filled.
+  AutovalidateMode _autovalidateMode = AutovalidateMode.disabled;
+
   final _usernameController = TextEditingController();
   final _passwordController = TextEditingController();
 
@@ -72,6 +76,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
   Future<void> _login() async {
     FocusScope.of(context).unfocus();
+
+    setState(() => _autovalidateMode = AutovalidateMode.always);
 
     if (!_formKey.currentState!.validate()) {
       return;
@@ -130,8 +136,14 @@ class _LoginScreenState extends State<LoginScreen> {
         message =
             'Unable to connect to the server. Please try again.';
       } else {
-        message =
-            'Incorrect username or password. Please try again.';
+        // Anything else (inactive account, validation error, server
+        // error) - show the real reason instead of disguising it as a
+        // wrong password, which hid the cause of BUG-28.
+        final String raw = e.toString().replaceFirst('Exception: ', '').trim();
+
+        message = raw.isEmpty
+            ? 'Sign-in failed. Please try again.'
+            : raw;
       }
 
       ScaffoldMessenger.of(context)
@@ -190,9 +202,9 @@ class _LoginScreenState extends State<LoginScreen> {
                 ),
                 const SizedBox(height: 8),
                 Text(
-                  'TaskFlow accounts are managed by your organisation, so '
-                  'there is no reset link. Ask whoever set up your account '
-                  'and they can set a new password for you.',
+                  'TaskFlow accounts are managed by your organisation. Ask '
+                  'your administrator to reset your password - you will '
+                  'receive an e-mail with your username and new password.',
                   style: theme.textTheme.bodyMedium?.copyWith(
                     color:
                         theme.colorScheme.onSurfaceVariant,
@@ -297,6 +309,7 @@ class _LoginScreenState extends State<LoginScreen> {
                   const BoxConstraints(maxWidth: 420),
               child: Form(
                 key: _formKey,
+                autovalidateMode: _autovalidateMode,
                 child: Column(
                   crossAxisAlignment:
                       CrossAxisAlignment.stretch,
@@ -355,6 +368,7 @@ class _LoginScreenState extends State<LoginScreen> {
                               textInputAction:
                                   TextInputAction.next,
                               autocorrect: false,
+                              enableSuggestions: false,
                               autovalidateMode:
                                   AutovalidateMode.disabled,
                               decoration:
@@ -392,6 +406,8 @@ class _LoginScreenState extends State<LoginScreen> {
                                   _passwordFocusNode,
                               obscureText:
                                   !_isPasswordVisible,
+                              autocorrect: false,
+                              enableSuggestions: false,
                               textInputAction:
                                   TextInputAction.done,
                               onFieldSubmitted: (_) =>
