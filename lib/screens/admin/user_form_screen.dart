@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import '../../core/coach/coach_target.dart';
 import 'package:provider/provider.dart';
 
@@ -324,6 +325,9 @@ class _UserFormScreenState extends State<UserFormScreen> {
               name: 'user_password',
               child: TextFormField(
                 controller: _passwordController,
+                inputFormatters: <TextInputFormatter>[
+                  LengthLimitingTextInputFormatter(128),
+                ],
                 obscureText: !_showPassword,
                 // With the eye icon on, Android keyboards otherwise
                 // autocorrect / capitalise / append a space after a
@@ -367,6 +371,11 @@ class _UserFormScreenState extends State<UserFormScreen> {
                   if (text.length < 8) {
                     return 'Use at least 8 characters';
                   }
+
+                  if (text.length > 128) {
+                    return 'Password cannot exceed 128 characters';
+                  }
+
   
                   return null;
                 },
